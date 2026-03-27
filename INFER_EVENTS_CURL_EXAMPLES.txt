@@ -1,0 +1,377 @@
+# Event Inference API - CURL Examples
+
+## 1️⃣ Infer Events using OpenAI
+
+```bash
+curl -X POST http://localhost:3000/api/events/infer-openai \
+  -H "Content-Type: application/json" \
+  -d '{
+    "companies": [
+      {
+        "company_name": "Google Vietnam",
+        "website": "google.com.vn",
+        "industry": "Technology / Cloud Computing",
+        "address": "Ho Chi Minh City, Vietnam",
+        "distance_from_center": 0
+      },
+      {
+        "company_name": "FPT Software",
+        "website": "fpt-software.com",
+        "industry": "Software Development / IT Services",
+        "address": "Da Nang, Vietnam",
+        "distance_from_center": 100
+      },
+      {
+        "company_name": "Viettel",
+        "website": "viettel.com.vn",
+        "industry": "Telecommunications",
+        "address": "Hanoi, Vietnam",
+        "distance_from_center": 1700
+      }
+    ]
+  }'
+```
+
+**Response Preview:**
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "mode": "infer",
+  "total_companies": 3,
+  "inferred_data": [
+    {
+      "company_name": "Google Vietnam",
+      "events": [
+        {
+          "event_name": "Annual Cloud Summit Vietnam",
+          "event_type": "Conference",
+          "description": "Showcase latest Google Cloud solutions and enterprise use cases.",
+          "estimated_scale": "large",
+          "frequency": "annual",
+          "estimated_timeframe": "Q3 2026",
+          "confidence_score": 0.92
+        },
+        {
+          "event_name": "Quarterly Developer Meetup",
+          "event_type": "Community event",
+          "description": "Connect local developers with Google Cloud engineers.",
+          "estimated_scale": "medium",
+          "frequency": "quarterly",
+          "estimated_timeframe": "Q1, Q2, Q3, Q4 2026",
+          "confidence_score": 0.78
+        }
+      ]
+    },
+    {
+      "company_name": "FPT Software",
+      "events": [
+        {
+          "event_name": "Annual Engineering Conference",
+          "event_type": "Conference",
+          "description": "Discuss technology trends and showcase internal projects.",
+          "estimated_scale": "medium",
+          "frequency": "annual",
+          "estimated_timeframe": "Q4 2026",
+          "confidence_score": 0.85
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## 2️⃣ Infer Events using Perplexity
+
+```bash
+curl -X POST http://localhost:3000/api/events/infer-perplexity \
+  -H "Content-Type: application/json" \
+  -d '{
+    "companies": [
+      {
+        "company_name": "Microsoft Vietnam",
+        "website": "microsoft.com",
+        "industry": "Technology / Software",
+        "address": "Hanoi, Vietnam",
+        "distance_from_center": 1700
+      },
+      {
+        "company_name": "Sony Vietnam",
+        "website": "sony.com.vn",
+        "industry": "Electronics / Entertainment",
+        "address": "Ho Chi Minh City, Vietnam",
+        "distance_from_center": 0
+      }
+    ]
+  }'
+```
+
+---
+
+## 3️⃣ Compare Results from OpenAI vs Perplexity
+
+```bash
+curl -X POST http://localhost:3000/api/events/infer-compare \
+  -H "Content-Type: application/json" \
+  -d '{
+    "companies": [
+      {
+        "company_name": "Google Vietnam",
+        "website": "google.com.vn",
+        "industry": "Technology / Cloud Computing",
+        "address": "Ho Chi Minh City, Vietnam",
+        "distance_from_center": 0
+      },
+      {
+        "company_name": "Samsung Vietnam",
+        "website": "samsung.com.vn",
+        "industry": "Electronics / Consumer Products",
+        "address": "Ho Chi Minh City, Vietnam",
+        "distance_from_center": 10
+      },
+      {
+        "company_name": "Exxon Mobil Vietnam",
+        "website": "exxonmobil.com",
+        "industry": "Energy / Oil & Gas",
+        "address": "Ho Chi Minh City, Vietnam",
+        "distance_from_center": 15
+      }
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total_companies": 3,
+  "providers": {
+    "openai": {
+      "success": true,
+      "total_inferred": 8,
+      "data": [...]
+    },
+    "perplexity": {
+      "success": true,
+      "total_inferred": 9,
+      "data": [...]
+    }
+  },
+  "timestamp": "2026-03-23T10:35:00.000Z"
+}
+```
+
+---
+
+## 4️⃣ Using PowerShell (Windows)
+
+```powershell
+$companies = @(
+    @{
+        company_name = "Google Vietnam"
+        website = "google.com.vn"
+        industry = "Technology / Cloud Computing"
+        address = "Ho Chi Minh City"
+        distance_from_center = 0
+    }
+) | ConvertTo-Json
+
+$body = @{
+    companies = $companies
+} | ConvertTo-Json -Depth 10
+
+Invoke-WebRequest -Uri "http://localhost:3000/api/events/infer-openai" `
+  -Method POST `
+  -Headers @{"Content-Type" = "application/json"} `
+  -Body $body
+```
+
+---
+
+## 5️⃣ Using Node.js
+
+```javascript
+const axios = require('axios');
+
+const companies = [
+  {
+    company_name: 'Google Vietnam',
+    website: 'google.com.vn',
+    industry: 'Technology / Cloud Computing',
+    address: 'Ho Chi Minh City, Vietnam',
+    distance_from_center: 0
+  }
+];
+
+async function inferEvents() {
+  try {
+    const response = await axios.post('http://localhost:3000/api/events/infer-openai', {
+      companies
+    });
+    console.log(JSON.stringify(response.data, null, 2));
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+inferEvents();
+```
+
+---
+
+## 6️⃣ Bulk Request (10 companies)
+
+```bash
+curl -X POST http://localhost:3000/api/events/infer-openai \
+  -H "Content-Type: application/json" \
+  -d '{
+    "companies": [
+      {
+        "company_name": "Google Vietnam",
+        "website": "google.com.vn",
+        "industry": "Technology",
+        "address": "HCM",
+        "distance_from_center": 0
+      },
+      {
+        "company_name": "Microsoft Vietnam",
+        "website": "microsoft.com",
+        "industry": "Technology",
+        "address": "Hanoi",
+        "distance_from_center": 1700
+      },
+      {
+        "company_name": "Facebook Vietnam",
+        "website": "facebook.com",
+        "industry": "Social Media / Technology",
+        "address": "HCM",
+        "distance_from_center": 0
+      },
+      {
+        "company_name": "Apple Vietnam",
+        "website": "apple.com",
+        "industry": "Consumer Electronics",
+        "address": "HCM",
+        "distance_from_center": 5
+      },
+      {
+        "company_name": "Amazon Vietnam",
+        "website": "amazon.com.vn",
+        "industry": "E-commerce",
+        "address": "HCM",
+        "distance_from_center": 0
+      }
+    ]
+  }'
+```
+
+---
+
+## 7️⃣ Minimal Request (Only Company Name)
+
+Even with minimal info, inference still works:
+
+```bash
+curl -X POST http://localhost:3000/api/events/infer-openai \
+  -H "Content-Type: application/json" \
+  -d '{
+    "companies": [
+      {
+        "company_name": "Viettel"
+      },
+      {
+        "company_name": "BIDV"
+      },
+      {
+        "company_name": "Vinamilk"
+      }
+    ]
+  }'
+```
+
+⚠️ **Note:** Response quality depends on how much info is provided
+
+---
+
+## 8️⃣ Save Response to File
+
+```bash
+# OpenAI
+curl -X POST http://localhost:3000/api/events/infer-openai \
+  -H "Content-Type: application/json" \
+  -d @companies.json > openai_results.json
+
+# Perplexity
+curl -X POST http://localhost:3000/api/events/infer-perplexity \
+  -H "Content-Type: application/json" \
+  -d @companies.json > perplexity_results.json
+
+# Compare
+curl -X POST http://localhost:3000/api/events/infer-compare \
+  -H "Content-Type: application/json" \
+  -d @companies.json > comparison_results.json
+```
+
+---
+
+## 9️⃣ With Pretty JSON Output
+
+```bash
+# Using jq (install: brew install jq)
+curl -s -X POST http://localhost:3000/api/events/infer-openai \
+  -H "Content-Type: application/json" \
+  -d @companies.json | jq '.'
+```
+
+---
+
+## 🔟 Custom .env for Testing
+
+Create `.env` file:
+```env
+API_PORT=3000
+OPENAI_API_KEY=sk-xxx...
+PERPLEXITY_API_KEY=ppl-xxx...
+EVENTBRITE_ACCESS_TOKEN=xxx...
+PREDICTHQ_ACCESS_TOKEN=xxx...
+GOOGLE_PLACES_API_KEY=xxx...
+```
+
+Then test:
+```bash
+npm install
+node src/api/server.js
+# In another terminal:
+node test-infer-events.js
+```
+
+---
+
+## Testing Tips
+
+1. **Check server status:**
+   ```bash
+   curl http://localhost:3000/
+   ```
+
+2. **Monitor logs:**
+   ```bash
+   # In server terminal, watch for:
+   # 🤖 OpenAI: Inferring events for X companies
+   # 🔍 Perplexity: Inferring events for X companies
+   ```
+
+3. **Compare response times:**
+   ```bash
+   time curl -X POST http://localhost:3000/api/events/infer-openai -d @companies.json
+   time curl -X POST http://localhost:3000/api/events/infer-perplexity -d @companies.json
+   ```
+
+4. **Validate response schema:**
+   ```javascript
+   // Check confidence_score is between 0 and 1
+   // Check event_type is one of: Conference, Trade show, Workshop...
+   // Check estimated_scale is: small | medium | large
+   ```

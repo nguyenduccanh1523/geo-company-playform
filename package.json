@@ -1,0 +1,54 @@
+{
+  "name": "geo-company-platform",
+  "version": "1.0.0",
+  "description": "Hệ thống thu thập Công ty - Sự kiện - Người tổ chức",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/server.js",
+    "api": "node src/api/server.js",
+    "watch": "node --watch src/server.js",
+    "worker": "node src/workers/index.js",
+    "worker:watch": "node --watch src/workers/index.js",
+    "dev:full": "concurrently \"npm run dev\" \"npm run worker:watch\"",
+    "db:init": "node src/database/init.js",
+    "db:seed": "node src/database/seed.js",
+    "mcp:server": "node src/mcp/server.js",
+    "search:nearby": "node src/scripts/searchNearby.js",
+    "test:eventbrite": "node test/test_eventbrite.js",
+    "test:eventbrite:detail": "node test/test_eventbrite_detail.js",
+    "mig:gen": "tsx ./node_modules/typeorm/cli.js migration:generate -d src/database/typeorm.config.ts",
+    "mig:run": "tsx ./node_modules/typeorm/cli.js migration:run -d src/database/typeorm.config.ts",
+    "mig:revert": "tsx ./node_modules/typeorm/cli.js migration:revert -d src/database/typeorm.config.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "geo-company",
+    "vector-db",
+    "mcp",
+    "node.js"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "bull": "^4.16.5",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.1",
+    "express": "^4.22.1",
+    "ioredis": "^5.10.0",
+    "openai": "^4.50.0",
+    "pg": "^8.10.0",
+    "redis": "^4.7.1",
+    "reflect-metadata": "^0.1.13",
+    "typeorm": "^0.3.17",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
