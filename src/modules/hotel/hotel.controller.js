@@ -137,6 +137,15 @@ export class HotelController {
     try {
       const { lat, lng, radius = 50, limit = 20 } = req.query;
 
+      // Validate required parameters
+      if (!lat || !lng) {
+        return res.status(400).json({
+          success: false,
+          error: "Missing required parameters: lat, lng",
+          example: "/api/hotels/nearby?lat=39.52&lng=-104.77&radius=50"
+        });
+      }
+
       const result = await HotelService.findNearbyHotels(
         parseFloat(lat),
         parseFloat(lng),

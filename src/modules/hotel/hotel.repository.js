@@ -10,6 +10,31 @@ import { createLogger } from "../../shared/utils/logger.js";
 
 const logger = createLogger("HotelRepository");
 
+// Simple factory function for Hotel objects
+function createHotel(row) {
+  return {
+    id: row.id,
+    external_source: row.external_source,
+    external_id: row.external_id,
+    name: row.name,
+    address: row.address,
+    lat: parseFloat(row.lat),
+    lng: parseFloat(row.lng),
+    phone: row.phone,
+    email: row.email,
+    website: row.website,
+    google_url: row.google_url,
+    rating: row.rating ? parseFloat(row.rating) : null,
+    reviews_count: row.reviews_count,
+    room_count: row.room_count,
+    description: row.description,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    raw_data: row.raw_data,
+  };
+}
+
 export class HotelRepository {
   /**
    * ✅ CREATE
@@ -17,7 +42,7 @@ export class HotelRepository {
   static async create(hotelData) {
     try {
       const result = await query(
-        `INSERT INTO hotel 
+        `INSERT INTO hotels 
          (external_source, external_id, name, address, lat, lng, phone, email, 
           website, google_url, rating, reviews_count, room_count, description, raw_data)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -41,7 +66,7 @@ export class HotelRepository {
         ],
       );
 
-      return Hotel.fromDatabase(result.rows[0]);
+      return createHotel(result.rows[0]);
     } catch (error) {
       logger.error("Error creating hotel", error);
       throw new DatabaseException("Failed to create hotel", error);
@@ -53,8 +78,8 @@ export class HotelRepository {
    */
   static async findById(id) {
     try {
-      const result = await query("SELECT * FROM hotel WHERE id = $1", [id]);
-      return result.rows.length > 0 ? Hotel.fromDatabase(result.rows[0]) : null;
+      const result = await query("SELECT * FROM hotels WHERE id = $1", [id]);
+      return result.rows.length > 0 ? createHotel(result.rows[0]) : null;
     } catch (error) {
       logger.error("Error finding hotel by ID", error);
       throw new DatabaseException("Failed to find hotel", error);
@@ -63,7 +88,7 @@ export class HotelRepository {
 
   static async findAll(filters = {}, pagination = { limit: 20, offset: 0 }) {
     try {
-      let sql = "SELECT * FROM hotel WHERE 1=1";
+      let sql = "SELECT * FROM hotels WHERE 1=1";
       const params = [];
       let paramCount = 1;
 
@@ -86,7 +111,7 @@ export class HotelRepository {
       params.push(pagination.limit, pagination.offset);
 
       const result = await query(sql, params);
-      return result.rows.map((row) => Hotel.fromDatabase(row));
+      return result.rows.map((row) => createHotel(row));
     } catch (error) {
       logger.error("Error finding hotels", error);
       throw new DatabaseException("Failed to find hotels", error);
@@ -100,7 +125,7 @@ export class HotelRepository {
          (6371 * acos(cos(radians($2)) * cos(radians(lat)) * 
          cos(radians(lng) - radians($3)) + 
          sin(radians($2)) * sin(radians(lat)))) AS distance_km
-         FROM hotel
+         FROM hotels
          WHERE status = 'active' AND (
            6371 * acos(cos(radians($2)) * cos(radians(lat)) * 
            cos(radians(lng) - radians($3)) + 
@@ -111,7 +136,7 @@ export class HotelRepository {
         [radiusKm, lat, lng, limit],
       );
 
-      return result.rows.map((row) => Hotel.fromDatabase(row));
+      return result.rows.map((row) => createHotel(row));
     } catch (error) {
       logger.error("Error finding nearby hotels", error);
       throw new DatabaseException("Failed to find nearby hotels", error);
@@ -121,10 +146,10 @@ export class HotelRepository {
   static async findByExternalId(externalId, externalSource) {
     try {
       const result = await query(
-        "SELECT * FROM hotel WHERE external_id = $1 AND external_source = $2",
+        "SELECT * FROM hotels WHERE external_id = $1 AND external_source = $2",
         [externalId, externalSource],
       );
-      return result.rows.length > 0 ? Hotel.fromDatabase(result.rows[0]) : null;
+      return result.rows.length > 0 ? createHotel(result.rows[0]) : null;
     } catch (error) {
       logger.error("Error finding hotel by external ID", error);
       throw new DatabaseException("Failed to find hotel", error);
@@ -133,7 +158,7 @@ export class HotelRepository {
 
   static async count(filters = {}) {
     try {
-      let sql = "SELECT COUNT(*) FROM hotel WHERE 1=1";
+      let sql = "SELECT COUNT(*) FROM hotels WHERE 1=1";
       const params = [];
       let paramCount = 1;
 
@@ -167,11 +192,11 @@ export class HotelRepository {
       updates.push(`updated_at = CURRENT_TIMESTAMP`);
 
       const result = await query(
-        `UPDATE hotel SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
+        `UPDATE hotels SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
         values,
       );
 
-      return result.rows.length > 0 ? Hotel.fromDatabase(result.rows[0]) : null;
+      return result.rows.length > 0 ? createHotel(result.rows[0]) : null;
     } catch (error) {
       logger.error("Error updating hotel", error);
       throw new DatabaseException("Failed to update hotel", error);
@@ -184,7 +209,7 @@ export class HotelRepository {
   static async delete(id) {
     try {
       const result = await query(
-        "DELETE FROM hotel WHERE id = $1 RETURNING id",
+        "DELETE FROM hotels WHERE id = $1 RETURNING id",
         [id],
       );
       return result.rows.length > 0;
@@ -205,7 +230,7 @@ export class HotelRepository {
       const results = [];
       for (const hotelData of hotels) {
         const result = await client.query(
-          `INSERT INTO hotel 
+          `INSERT INTO hotels 
            (external_source, external_id, name, address, lat, lng, phone, email, 
             website, google_url, rating, reviews_count, room_count, description, raw_data)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -228,7 +253,7 @@ export class HotelRepository {
             hotelData.raw_data || null,
           ],
         );
-        results.push(Hotel.fromDatabase(result.rows[0]));
+        results.push(createHotel(result.rows[0]));
       }
 
       await client.query("COMMIT");
