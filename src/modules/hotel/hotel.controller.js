@@ -142,7 +142,7 @@ export class HotelController {
         return res.status(400).json({
           success: false,
           error: "Missing required parameters: lat, lng",
-          example: "/api/hotels/nearby?lat=39.52&lng=-104.77&radius=50"
+          example: "/api/hotels/nearby?lat=39.52&lng=-104.77&radius=50",
         });
       }
 
