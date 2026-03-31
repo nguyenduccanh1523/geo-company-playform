@@ -54,20 +54,45 @@ export class HotelService {
 
   static async searchHotels(
     filters = {},
-    pagination = { limit: 20, offset: 0 },
+    pagination = { limit: 20, offset: 0, page: null, pageSize: null },
   ) {
     try {
       logger.info(`Searching hotels with filters: ${JSON.stringify(filters)}`);
 
-      const hotels = await HotelRepository.findAll(filters, pagination);
+      // Support both offset/limit and page/pageSize
+      let finalLimit = pagination.limit || 20;
+      let finalOffset = pagination.offset || 0;
+
+      // If page/pageSize are provided, convert to offset/limit
+      if (pagination.page && pagination.pageSize) {
+        const pageNum = Math.max(1, parseInt(pagination.page) || 1);
+        const pageSizeNum = Math.min(
+          Math.max(1, parseInt(pagination.pageSize) || 20),
+          500,
+        );
+        finalLimit = pageSizeNum;
+        finalOffset = (pageNum - 1) * pageSizeNum;
+      }
+
+      const hotels = await HotelRepository.findAll(filters, {
+        limit: finalLimit,
+        offset: finalOffset,
+      });
       const total = await HotelRepository.count(filters);
+
+      // Calculate pagination info for both styles
+      const page = Math.floor(finalOffset / finalLimit) + 1;
+      const totalPages = Math.ceil(total / finalLimit);
 
       return {
         hotels,
         total,
-        limit: pagination.limit,
-        offset: pagination.offset,
-        hasMore: pagination.offset + pagination.limit < total,
+        limit: finalLimit,
+        offset: finalOffset,
+        page,
+        pageSize: finalLimit,
+        totalPages,
+        hasMore: finalOffset + finalLimit < total,
       };
     } catch (error) {
       logger.error(`Error searching hotels: ${error.message}`);

@@ -16,6 +16,7 @@ import eventRoutes from "./modules/event/event.routes.js";
 import crawlBatchRoutes from "./modules/crawl-batch/crawl-batch.routes.js";
 import googlePlacesRoutes from "./modules/google-places/google-places.routes.js";
 import googlePlacesStreamRoutes from "./modules/google-places/google-places-stream.routes.js";
+import apifyRoutes from "./modules/apify-integration/apify.routes.js";
 
 dotenv.config();
 
@@ -113,6 +114,7 @@ app.use("/api/hotels", hotelRoutes);
 app.use("/api/people", personRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/apify", apifyRoutes);
 
 /**
  * Data Pipeline Routes

@@ -82,10 +82,19 @@ export class HotelController {
 
   /**
    * GET /api/hotels
+   * Support both page/pageSize and offset/limit
    */
   static async listHotels(req, res, next) {
     try {
-      const { name, status, minRating, limit = 20, offset = 0 } = req.query;
+      const {
+        name,
+        status,
+        minRating,
+        limit = 20,
+        offset = 0,
+        page,
+        pageSize,
+      } = req.query;
 
       const result = await HotelService.searchHotels(
         {
@@ -93,7 +102,12 @@ export class HotelController {
           status,
           minRating: minRating ? parseFloat(minRating) : undefined,
         },
-        { limit: Math.min(parseInt(limit), 100), offset: parseInt(offset) },
+        {
+          limit: Math.min(parseInt(limit || 20), 500),
+          offset: parseInt(offset || 0),
+          page: page ? parseInt(page) : undefined,
+          pageSize: pageSize ? parseInt(pageSize) : undefined,
+        },
       );
 
       const responses = result.hotels.map((h) => new HotelResponseDto(h));
@@ -102,8 +116,11 @@ export class HotelController {
         success: true,
         data: responses,
         pagination: {
-          limit: result.limit,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
           offset: result.offset,
+          limit: result.limit,
           total: result.total,
           hasMore: result.hasMore,
         },
