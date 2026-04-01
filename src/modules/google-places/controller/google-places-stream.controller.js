@@ -10,6 +10,13 @@ import {
 import GooglePlacesService from "../../../services/googlePlacesService.js";
 import { query } from "../../../config/database.js";
 import { createLogger } from "../../../shared/utils/logger.js";
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendNotFound,
+  sendPaginatedSuccess,
+} from "../../../shared/utils/response.js";
 import redis from "../../../config/redis.js";
 import { randomBytes } from "crypto";
 
@@ -178,19 +185,22 @@ export class GooglePlacesStreamController {
         session.endTime = Date.now();
         await session.save(redis);
 
-        return res.json({
-          success: true,
-          sessionId,
-          hotelId,
-          source: "CACHE",
-          message: `Data loaded from cache - ${existingCompaniesCount} companies found in previous search`,
-          companies_available: existingCompaniesCount,
-          cached_data: true,
-          force_refresh_hint:
-            'Use "forceRefresh": true in request body to search again',
-          retrieval_method:
-            "Use GET /api/search-session/:sessionId to fetch companies",
-        });
+        return sendSuccess(
+          res,
+          {
+            sessionId,
+            hotelId,
+            source: "CACHE",
+            companies_available: existingCompaniesCount,
+            cached_data: true,
+            force_refresh_hint:
+              'Use "forceRefresh": true in request body to search again',
+            retrieval_method:
+              "Use GET /api/search-session/:sessionId to fetch companies",
+          },
+          `Data loaded from cache - ${existingCompaniesCount} companies found in previous search`,
+          200,
+        );
       }
 
       // ✅ If forceRefresh = true, log it
@@ -204,18 +214,22 @@ export class GooglePlacesStreamController {
       }
 
       // ✅ RETURN SESSION ID IMMEDIATELY (not waiting for search)
-      res.json({
-        success: true,
-        sessionId,
-        hotelId,
-        source: "NEW_SEARCH",
-        message:
-          "Search started in background. Poll /api/search-session/:sessionId for progress.",
-        cache_status:
-          existingCompaniesCount > 0
-            ? `${existingCompaniesCount} companies already exist but forcing refresh`
-            : "No cached data",
-      });
+      sendSuccess(
+        res,
+        {
+          sessionId,
+          hotelId,
+          source: "NEW_SEARCH",
+          cache_status:
+            existingCompaniesCount > 0
+              ? `${existingCompaniesCount} companies already exist but forcing refresh`
+              : "No cached data",
+          retrieval_method:
+            "Use GET /api/search-session/:sessionId to fetch companies",
+        },
+        "Search started in background. Poll /api/search-session/:sessionId for progress.",
+        200,
+      );
 
       // 🔄 RUN SEARCH IN BACKGROUND (non-blocking)
       (async () => {
@@ -334,7 +348,7 @@ export class GooglePlacesStreamController {
       })();
     } catch (error) {
       logger.error("❌ POST error:", error);
-      res.status(500).json({ error: error.message });
+      return sendError(res, error.message);
     }
   }
 
@@ -345,7 +359,7 @@ export class GooglePlacesStreamController {
   static async getSearchSession(req, res) {
     try {
       const { sessionId } = req.params;
-      const { limit = 50, offset = 0 } = req.query;
+      const { limit = 20, page = 1 } = req.query;
 
       logger.info(`
 ╔════════════════════════════════════════════════════════════╗
@@ -353,37 +367,31 @@ export class GooglePlacesStreamController {
 ╚════════════════════════════════════════════════════════════╝
   📌 Session ID: ${sessionId}
   📊 Query Params:
+     ├─ page: ${page}
      ├─ limit: ${limit}
-     ├─ offset: ${offset}
       `);
 
       // Get session from Redis
       const sessionData = await redis.get(`search:${sessionId}`);
       if (!sessionData) {
         logger.warn(`❌ Session not found: ${sessionId}`);
-        return res.status(404).json({
-          success: false,
-          error: "Session not found",
-          sessionId,
-          tip: "Session may have expired (TTL: 1 hour)",
-        });
+        return sendNotFound(res, "Session not found or expired (TTL: 1 hour)");
       }
 
       const session = JSON.parse(sessionData);
       logger.info(`✅ Session found - Status: ${session.status}`);
 
-      const limit_num = Math.min(parseInt(limit) || 50, 500);
-      const offset_num = parseInt(offset) || 0;
+      const limit_num = Math.min(Math.max(1, parseInt(limit) || 20), 500);
+      const page_num = Math.max(1, parseInt(page) || 1);
+      const offset_num = (page_num - 1) * limit_num;
 
       const hotelId = session.hotelId;
 
       if (!hotelId) {
-        return res.status(400).json({
-          error:
-            "Session has no hotel_id. Search may not have completed successfully.",
-          sessionId,
-          session,
-        });
+        return sendValidationError(
+          res,
+          "Session has no hotel_id. Search may not have completed successfully.",
+        );
       }
 
       // Query only companies for this hotel
@@ -406,42 +414,28 @@ export class GooglePlacesStreamController {
 
       const companies = companiesResult.rows;
       const total = parseInt(totalResult.rows[0].total);
+      const totalPages = Math.ceil(total / limit_num);
 
       logger.info(
-        `✅ Found ${total} total | Returning ${companies.length} | Page offset: ${offset_num}`,
+        `✅ Found ${total} total | Returning ${companies.length} | Page: ${page_num}/${totalPages}`,
       );
 
       res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.json({
-        success: true,
-        sessionId,
-        hotelId,
-        session: {
-          status: session.status,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          duration: session.getDuration?.() || Date.now() - session.startTime,
-          totalCompanies: session.totalCompanies,
-          totalQueued: session.totalQueued,
-          totalSaved: session.totalSaved,
-          totalFailed: session.totalFailed,
-          parameters: session.params,
-        },
+      return sendPaginatedSuccess(
+        res,
         companies,
-        pagination: {
-          limit: limit_num,
-          offset: offset_num,
-          total: total,
+        {
+          page: page_num,
+          pageSize: limit_num,
+          total,
+          totalPages,
         },
-      });
+        "Companies retrieved successfully",
+      );
     } catch (error) {
       logger.error(`❌ GET /search-session ERROR: ${error.message}`);
       res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        type: error.constructor.name,
-      });
+      return sendError(res, error.message);
     }
   }
 
@@ -458,36 +452,32 @@ export class GooglePlacesStreamController {
       const sessionData = await redis.get(`search:${sessionId}`);
       if (!sessionData) {
         logger.warn(`❌ Status request - Session not found: ${sessionId}`);
-        return res.status(404).json({
-          success: false,
-          error: "Session not found",
-          sessionId,
-        });
+        return sendNotFound(res, "Session not found");
       }
 
       const session = JSON.parse(sessionData);
 
       res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.json({
-        success: true,
-        sessionId,
-        hotelId: session.hotelId,
-        status: session.status,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        duration: session.getDuration?.() || Date.now() - session.startTime,
-        totalCompanies: session.totalCompanies,
-        totalQueued: session.totalQueued,
-        totalSaved: session.totalSaved,
-        totalFailed: session.totalFailed,
-      });
+      return sendSuccess(
+        res,
+        {
+          sessionId,
+          hotelId: session.hotelId,
+          status: session.status,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          duration: session.getDuration?.() || Date.now() - session.startTime,
+          totalCompanies: session.totalCompanies,
+          totalQueued: session.totalQueued,
+          totalSaved: session.totalSaved,
+          totalFailed: session.totalFailed,
+        },
+        "Session status retrieved successfully",
+      );
     } catch (error) {
       logger.error(`❌ GET /status error: ${error.message}`);
       res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.status(500).json({
-        success: false,
-        error: error.message,
-      });
+      return sendError(res, error.message);
     }
   }
 
@@ -565,9 +555,10 @@ export class GooglePlacesStreamController {
       const totalPages = Math.ceil(total / pageLimit);
 
       if (pageNum > totalPages && totalPages > 0) {
-        return res.status(404).json({
-          error: `Page ${pageNum} not found. Total pages: ${totalPages}`,
-        });
+        return sendNotFound(
+          res,
+          `Page ${pageNum} not found. Total pages: ${totalPages}`,
+        );
       }
 
       // Query companies
@@ -589,25 +580,20 @@ export class GooglePlacesStreamController {
         `📋 Results: Found ${total} total | Returning ${companiesResult.rows.length} | Page: ${pageNum}/${totalPages}`,
       );
 
-      res.json({
-        hotel_id,
-        companies: companiesResult.rows,
-        pagination: {
+      return sendPaginatedSuccess(
+        res,
+        companiesResult.rows,
+        {
           page: pageNum,
-          limit: pageLimit,
+          pageSize: pageLimit,
           total,
           totalPages,
         },
-        filters: {
-          keyword,
-          sort,
-          order,
-          maxDistance: maxDistanceVal,
-        },
-      });
+        "Companies retrieved successfully",
+      );
     } catch (error) {
       logger.error("GET /companies-by-hotel error:", error);
-      res.status(500).json({ error: error.message });
+      return sendError(res, error.message);
     }
   }
 }

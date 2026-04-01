@@ -8,6 +8,13 @@ import { GooglePlacesRepository } from "../repository/google-places.repository.j
 import GooglePlacesService from "../../../services/googlePlacesService.js";
 import CompanyPersistenceService from "../../../services/companyPersistenceService.js";
 import { createLogger } from "../../../shared/utils/logger.js";
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendNotFound,
+  sendPaginatedSuccess,
+} from "../../../shared/utils/response.js";
 
 const logger = createLogger("GooglePlacesController");
 
@@ -267,25 +274,20 @@ export class GooglePlacesController {
         );
       }
 
-      return res.json({
-        hotel_id,
+      return sendPaginatedSuccess(
+        res,
         companies,
-        pagination: {
+        {
           page: pageNum,
-          limit: pageLimit,
+          pageSize: pageLimit,
           total: result.total,
           totalPages: result.totalPages,
         },
-        filters: {
-          keyword,
-          sort,
-          order,
-          maxDistance,
-        },
-      });
+        "Companies retrieved successfully",
+      );
     } catch (error) {
       logger.error(`Get companies by hotel error: ${error.message}`);
-      return res.status(500).json({ success: false, error: error.message });
+      return sendError(res, error.message);
     }
   }
 
@@ -297,24 +299,19 @@ export class GooglePlacesController {
       const { companyId } = req.params;
 
       if (!companyId) {
-        return res
-          .status(400)
-          .json({ success: false, error: "companyId required" });
+        return sendValidationError(res, "companyId is required");
       }
 
       const company = await GooglePlacesRepository.getCompanyById(companyId);
 
       if (!company) {
-        return res.status(404).json({
-          success: false,
-          error: `Company not found: ${companyId}`,
-        });
+        return sendNotFound(res, `Company not found: ${companyId}`);
       }
 
-      return res.json({ success: true, company });
+      return sendSuccess(res, company, "Company retrieved successfully");
     } catch (error) {
       logger.error(`Get company error: ${error.message}`);
-      return res.status(500).json({ success: false, error: error.message });
+      return sendError(res, error.message);
     }
   }
 }

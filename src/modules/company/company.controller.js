@@ -11,6 +11,13 @@
 import { CompanyService } from "./company.service.js";
 import { CompanyResponseDto } from "./dto/company-response.dto.js";
 import { createLogger } from "../../shared/utils/logger.js";
+import {
+  sendSuccess,
+  sendError,
+  sendPaginatedSuccess,
+  sendNotFound,
+  sendValidationError,
+} from "../../shared/utils/response.js";
 
 const logger = createLogger("CompanyController");
 
@@ -24,11 +31,7 @@ export class CompanyController {
       const company = await CompanyService.createCompany(req.body);
       const response = new CompanyResponseDto(company);
 
-      res.status(201).json({
-        success: true,
-        data: response,
-        message: "Company created successfully",
-      });
+      return sendSuccess(res, response, "Company created successfully", 201);
     } catch (error) {
       next(error);
     }
@@ -43,12 +46,12 @@ export class CompanyController {
       const { id } = req.params;
 
       const company = await CompanyService.getCompany(id);
-      const response = new CompanyResponseDto(company);
+      if (!company) {
+        return sendNotFound(res, `Company not found: ${id}`);
+      }
 
-      res.json({
-        success: true,
-        data: response,
-      });
+      const response = new CompanyResponseDto(company);
+      return sendSuccess(res, response, "Company retrieved successfully");
     } catch (error) {
       next(error);
     }
@@ -60,25 +63,30 @@ export class CompanyController {
    */
   static async listCompanies(req, res, next) {
     try {
-      const { industry, name, limit = 20, offset = 0 } = req.query;
+      const { industry, name, limit = 20, page = 1 } = req.query;
+
+      const pageSize = Math.min(parseInt(limit) || 20, 100);
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const offset = (pageNum - 1) * pageSize;
 
       const result = await CompanyService.searchCompanies(
         { industry, name },
-        { limit: Math.min(parseInt(limit), 100), offset: parseInt(offset) },
+        { limit: pageSize, offset },
       );
 
       const responses = result.companies.map((c) => new CompanyResponseDto(c));
 
-      res.json({
-        success: true,
-        data: responses,
-        pagination: {
-          limit: result.limit,
-          offset: result.offset,
+      return sendPaginatedSuccess(
+        res,
+        responses,
+        {
+          page: pageNum,
+          pageSize,
           total: result.total,
-          hasMore: result.hasMore,
+          totalPages: Math.ceil(result.total / pageSize),
         },
-      });
+        "Companies retrieved successfully",
+      );
     } catch (error) {
       next(error);
     }
@@ -101,15 +109,18 @@ export class CompanyController {
 
       const responses = result.companies.map((c) => new CompanyResponseDto(c));
 
-      res.json({
-        success: true,
-        data: responses,
-        statistics: {
-          total: responses.length,
-          location: result.location,
-          radiusKm: result.radiusKm,
+      return sendSuccess(
+        res,
+        {
+          companies: responses,
+          statistics: {
+            total: responses.length,
+            location: result.location,
+            radiusKm: result.radiusKm,
+          },
         },
-      });
+        "Companies retrieved successfully",
+      );
     } catch (error) {
       next(error);
     }
@@ -126,11 +137,7 @@ export class CompanyController {
       const company = await CompanyService.updateCompany(id, req.body);
       const response = new CompanyResponseDto(company);
 
-      res.json({
-        success: true,
-        data: response,
-        message: "Company updated successfully",
-      });
+      return sendSuccess(res, response, "Company updated successfully");
     } catch (error) {
       next(error);
     }
@@ -146,10 +153,7 @@ export class CompanyController {
 
       await CompanyService.deleteCompany(id);
 
-      res.json({
-        success: true,
-        message: "Company deleted successfully",
-      });
+      return sendSuccess(res, null, "Company deleted successfully");
     } catch (error) {
       next(error);
     }
@@ -164,35 +168,24 @@ export class CompanyController {
       const { companies, sourceId } = req.body;
 
       if (!companies || !Array.isArray(companies)) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "INVALID_INPUT",
-            message: "companies array is required",
-          },
-        });
+        return sendValidationError(res, "Missing required: companies array");
       }
 
       if (!sourceId) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "INVALID_INPUT",
-            message: "sourceId is required",
-          },
-        });
+        return sendValidationError(res, "Missing required: sourceId");
       }
 
       const result = await CompanyService.importCompanies(companies, sourceId);
 
-      res.status(201).json({
-        success: true,
-        data: {
+      return sendSuccess(
+        res,
+        {
           count: result.count,
           companies: result.companies.map((c) => new CompanyResponseDto(c)),
         },
-        message: `${result.count} companies imported successfully`,
-      });
+        `${result.count} companies imported successfully`,
+        201,
+      );
     } catch (error) {
       next(error);
     }
@@ -206,10 +199,7 @@ export class CompanyController {
     try {
       const stats = await CompanyService.getStatistics();
 
-      res.json({
-        success: true,
-        data: stats,
-      });
+      return sendSuccess(res, stats, "Statistics retrieved successfully");
     } catch (error) {
       next(error);
     }
