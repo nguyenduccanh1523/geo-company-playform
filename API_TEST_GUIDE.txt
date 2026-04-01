@@ -16,12 +16,21 @@ $body = @{
     lng = -104.77
     radius = 5
     keyword = "company"
+    name = "Denver Tech District"
 } | ConvertTo-Json
 
 curl -X POST "http://localhost:3000/api/search-companies-stream" `
   -H "Content-Type: application/json" `
   -d $body `
   -TimeoutSec 120
+
+# Parameters:
+# - lat: required (latitude)
+# - lng: required (longitude)
+# - radius: optional (search radius in km, default: 5)
+# - keyword: optional (search keyword, default: "company")
+# - name: optional (location name to save in database, default: "Search Location - {radius}km")
+# - forceRefresh: optional (skip cache and search again, default: false)
 ```
 
 **Expected Logs Sẽ Thấy:**

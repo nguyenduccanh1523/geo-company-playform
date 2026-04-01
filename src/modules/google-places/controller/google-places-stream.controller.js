@@ -31,6 +31,7 @@ export class GooglePlacesStreamController {
         keyword = "company",
         maxResults = 100,
         forceRefresh = false,
+        name = null,
       } = req.body;
 
       if (!lat || !lng) {
@@ -78,6 +79,7 @@ export class GooglePlacesStreamController {
         gridRadius: gridRadiusKm,
         gridsNeeded,
         keyword,
+        name,
       });
       await session.save(redis);
 
@@ -110,6 +112,7 @@ export class GooglePlacesStreamController {
           }
         } else {
           // Create new hotel
+          const hotelName = name || `Search Location - ${searchRadius}km`;
           const insertHotelQuery = `
             INSERT INTO hotels 
             (name, address, lat, lng, phone, email, website, status, 
@@ -120,7 +123,7 @@ export class GooglePlacesStreamController {
           `;
 
           const newHotelResult = await query(insertHotelQuery, [
-            `Search Location - ${searchRadius}km `,
+            hotelName,
             `Search origin point (lat: ${lat.toFixed(4)}, lng: ${lng.toFixed(4)})`,
             lat,
             lng,
