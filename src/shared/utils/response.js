@@ -98,8 +98,12 @@ export function sendForbidden(res, message = "Forbidden") {
 
 /**
  * Paginated Success Response
+ *
+ * Pagination info is optional and at the same level as data
+ * Format: { statusCode, message, data: [...], pagination?: {...} }
+ *
  * @param {object} res - Express response object
- * @param {*} data - Response data
+ * @param {Array} data - Array of resources
  * @param {object} pagination - Pagination info { page, pageSize, total, totalPages }
  * @param {string} message - Response message
  * @param {number} statusCode - HTTP status code (default: 200)
@@ -112,21 +116,25 @@ export function sendPaginatedSuccess(
   message = "Success",
   statusCode = 200,
 ) {
-  return res.status(statusCode).json({
+  const response = {
     statusCode,
     message,
-    data: {
-      items: data,
-      pagination: {
-        page: pagination.page,
-        pageSize: pagination.pageSize,
-        total: pagination.total,
-        totalPages: pagination.totalPages,
-        hasNextPage: pagination.page < pagination.totalPages,
-        hasPreviousPage: pagination.page > 1,
-      },
-    },
-  });
+    data: Array.isArray(data) ? data : [],
+  };
+
+  // Add pagination if provided
+  if (pagination) {
+    response.pagination = {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      total: pagination.total,
+      totalPages: pagination.totalPages,
+      hasNextPage: pagination.page < pagination.totalPages,
+      hasPreviousPage: pagination.page > 1,
+    };
+  }
+
+  return res.status(statusCode).json(response);
 }
 
 export default {
