@@ -1,27 +1,37 @@
 /**
  * HOTEL CONTROLLER
+ *
+ * HTTP request/response handling
+ * - Parse request params
+ * - Validate input
+ * - Call service
+ * - Format response using standardized response helpers
  */
 
 import { HotelService } from "./hotel.service.js";
 import { HotelResponseDto, HotelDetailDto } from "./dto/hotel-response.dto.js";
 import { createLogger } from "../../shared/utils/logger.js";
+import {
+  sendSuccess,
+  sendError,
+  sendPaginatedSuccess,
+  sendNotFound,
+  sendValidationError,
+} from "../../shared/utils/response.js";
 
 const logger = createLogger("HotelController");
 
 export class HotelController {
   /**
    * POST /api/hotels
+   * Create a new hotel
    */
   static async createHotel(req, res, next) {
     try {
       const hotel = await HotelService.createHotel(req.body);
       const response = new HotelResponseDto(hotel);
 
-      res.status(201).json({
-        success: true,
-        data: response,
-        message: "Hotel created successfully",
-      });
+      return sendSuccess(res, response, "Hotel created successfully", 201);
     } catch (error) {
       next(error);
     }
@@ -29,18 +39,19 @@ export class HotelController {
 
   /**
    * GET /api/hotels/:id
+   * Get single hotel by ID
    */
   static async getHotel(req, res, next) {
     try {
       const { id } = req.params;
 
       const hotel = await HotelService.getHotel(id);
-      const response = new HotelResponseDto(hotel);
+      if (!hotel) {
+        return sendNotFound(res, `Hotel not found: ${id}`);
+      }
 
-      res.json({
-        success: true,
-        data: response,
-      });
+      const response = new HotelResponseDto(hotel);
+      return sendSuccess(res, response, "Hotel retrieved successfully");
     } catch (error) {
       next(error);
     }
@@ -55,26 +66,32 @@ export class HotelController {
       const { id } = req.params;
 
       const details = await HotelService.getHotelDetails(id);
+      if (!details || !details.hotel) {
+        return sendNotFound(res, `Hotel not found: ${id}`);
+      }
 
-      res.json({
-        success: true,
-        data: {
-          hotel: new HotelResponseDto(details.hotel),
-          nearby_companies: details.companies.map((c) => ({
-            id: c.id,
-            name: c.name,
-            address: c.address,
-            distance_km: c.distance_km,
-            relationship_type: c.relationship_type,
-          })),
-          nearby_events: details.events.map((e) => ({
-            id: e.id,
-            name: e.name,
-            start_date: e.start_date,
-            distance_km: e.distance_km,
-          })),
-        },
-      });
+      const detailDto = {
+        hotel: new HotelResponseDto(details.hotel),
+        nearby_companies: details.companies.map((c) => ({
+          id: c.id,
+          name: c.name,
+          address: c.address,
+          distance_km: c.distance_km,
+          relationship_type: c.relationship_type,
+        })),
+        nearby_events: details.events.map((e) => ({
+          id: e.id,
+          name: e.name,
+          start_date: e.start_date,
+          distance_km: e.distance_km,
+        })),
+      };
+
+      return sendSuccess(
+        res,
+        detailDto,
+        "Hotel details retrieved successfully",
+      );
     } catch (error) {
       next(error);
     }
@@ -82,7 +99,7 @@ export class HotelController {
 
   /**
    * GET /api/hotels
-   * Support both page/pageSize and offset/limit
+   * List and search hotels with pagination (support both page/pageSize and offset/limit)
    */
   static async listHotels(req, res, next) {
     try {
@@ -96,6 +113,11 @@ export class HotelController {
         pageSize,
       } = req.query;
 
+      // Parse and validate pagination parameters
+      const pageNum = page ? Math.max(1, parseInt(page)) : 1;
+      const pageSizeNum = Math.min(parseInt(pageSize || limit || 20), 100);
+      const calculatedOffset = (pageNum - 1) * pageSizeNum;
+
       const result = await HotelService.searchHotels(
         {
           name,
@@ -103,28 +125,25 @@ export class HotelController {
           minRating: minRating ? parseFloat(minRating) : undefined,
         },
         {
-          limit: Math.min(parseInt(limit || 20), 500),
-          offset: parseInt(offset || 0),
-          page: page ? parseInt(page) : undefined,
-          pageSize: pageSize ? parseInt(pageSize) : undefined,
+          limit: pageSizeNum,
+          offset: calculatedOffset,
         },
       );
 
       const responses = result.hotels.map((h) => new HotelResponseDto(h));
+      const totalPages = Math.ceil(result.total / pageSizeNum);
 
-      res.json({
-        success: true,
-        data: responses,
-        pagination: {
-          page: result.page,
-          pageSize: result.pageSize,
-          totalPages: result.totalPages,
-          offset: result.offset,
-          limit: result.limit,
+      return sendPaginatedSuccess(
+        res,
+        responses,
+        {
+          page: pageNum,
+          pageSize: pageSizeNum,
           total: result.total,
-          hasMore: result.hasMore,
+          totalPages,
         },
-      });
+        "Hotels retrieved successfully",
+      );
     } catch (error) {
       next(error);
     }
@@ -132,6 +151,7 @@ export class HotelController {
 
   /**
    * GET /api/hotels/nearby
+   * Find nearby hotels by location
    */
   static async getNearbyHotels(req, res, next) {
     try {
@@ -139,11 +159,14 @@ export class HotelController {
 
       // Validate required parameters
       if (!lat || !lng) {
-        return res.status(400).json({
-          success: false,
-          error: "Missing required parameters: lat, lng",
-          example: "/api/hotels/nearby?lat=39.52&lng=-104.77&radius=50",
-        });
+        return sendValidationError(
+          res,
+          "Missing required parameters: lat, lng",
+          {
+            example:
+              "/api/hotels/nearby?lat=39.52&lng=-104.77&radius=50&limit=20",
+          },
+        );
       }
 
       const result = await HotelService.findNearbyHotels(
@@ -155,15 +178,14 @@ export class HotelController {
 
       const responses = result.hotels.map((h) => new HotelResponseDto(h));
 
-      res.json({
-        success: true,
-        data: responses,
-        statistics: {
-          total: responses.length,
-          location: result.location,
-          radiusKm: result.radiusKm,
-        },
-      });
+      const data = {
+        items: responses,
+        location: result.location,
+        radiusKm: result.radiusKm,
+        totalFound: responses.length,
+      };
+
+      return sendSuccess(res, data, "Nearby hotels retrieved successfully");
     } catch (error) {
       next(error);
     }
@@ -171,19 +193,19 @@ export class HotelController {
 
   /**
    * PUT /api/hotels/:id
+   * Update hotel
    */
   static async updateHotel(req, res, next) {
     try {
       const { id } = req.params;
 
       const hotel = await HotelService.updateHotel(id, req.body);
-      const response = new HotelResponseDto(hotel);
+      if (!hotel) {
+        return sendNotFound(res, `Hotel not found: ${id}`);
+      }
 
-      res.json({
-        success: true,
-        data: response,
-        message: "Hotel updated successfully",
-      });
+      const response = new HotelResponseDto(hotel);
+      return sendSuccess(res, response, "Hotel updated successfully");
     } catch (error) {
       next(error);
     }
@@ -191,6 +213,7 @@ export class HotelController {
 
   /**
    * DELETE /api/hotels/:id
+   * Delete hotel
    */
   static async deleteHotel(req, res, next) {
     try {
@@ -198,10 +221,7 @@ export class HotelController {
 
       await HotelService.deleteHotel(id);
 
-      res.json({
-        success: true,
-        message: "Hotel deleted successfully",
-      });
+      return sendSuccess(res, { id }, "Hotel deleted successfully");
     } catch (error) {
       next(error);
     }
@@ -209,19 +229,19 @@ export class HotelController {
 
   /**
    * POST /api/hotels/:id/archive
+   * Archive hotel (soft delete)
    */
   static async archiveHotel(req, res, next) {
     try {
       const { id } = req.params;
 
       const hotel = await HotelService.archiveHotel(id);
-      const response = new HotelResponseDto(hotel);
+      if (!hotel) {
+        return sendNotFound(res, `Hotel not found: ${id}`);
+      }
 
-      res.json({
-        success: true,
-        data: response,
-        message: "Hotel archived successfully",
-      });
+      const response = new HotelResponseDto(hotel);
+      return sendSuccess(res, response, "Hotel archived successfully");
     } catch (error) {
       next(error);
     }
@@ -229,31 +249,36 @@ export class HotelController {
 
   /**
    * POST /api/hotels/import
+   * Import multiple hotels
    */
   static async importHotels(req, res, next) {
     try {
       const { hotels, source_id } = req.body;
 
       if (!hotels || !Array.isArray(hotels)) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "INVALID_INPUT",
-            message: "hotels array is required",
-          },
+        return sendValidationError(res, "Invalid request format", {
+          required: ["hotels"],
+          details: "hotels must be an array",
         });
+      }
+
+      if (hotels.length === 0) {
+        return sendValidationError(res, "Hotels array cannot be empty");
       }
 
       const result = await HotelService.importHotels(hotels, source_id);
 
-      res.status(201).json({
-        success: true,
-        data: {
-          count: result.count,
-          hotels: result.hotels.map((h) => new HotelResponseDto(h)),
-        },
-        message: `${result.count} hotels imported successfully`,
-      });
+      const importData = {
+        count: result.count,
+        imported: result.hotels.map((h) => new HotelResponseDto(h)),
+      };
+
+      return sendSuccess(
+        res,
+        importData,
+        `${result.count} hotels imported successfully`,
+        201,
+      );
     } catch (error) {
       next(error);
     }
