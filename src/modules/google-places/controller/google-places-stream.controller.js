@@ -26,6 +26,16 @@ export class GooglePlacesStreamController {
   /**
    * POST /search-companies-stream
    * Progressive search + SSE stream + Bull Queue
+   *
+   * Body Parameters:
+   * - lat, lng: Required coordinates
+   * - radius_km: Search radius (optional, default 5)
+   * - grid_radius_km: Grid size for multi-point search (optional, auto-calculated)
+   * - keyword: Search keyword (optional, default "company")
+   * - name: Hotel/location name (optional)
+   * - address: Hotel/location address (optional, auto-generated if not provided)
+   * - maxResults: Max results (optional, default 100)
+   * - forceRefresh: Skip cache (optional, default false)
    */
   static async searchCompaniesStream(req, res) {
     try {
@@ -39,6 +49,7 @@ export class GooglePlacesStreamController {
         maxResults = 100,
         forceRefresh = false,
         name = null,
+        address = null,
       } = req.body;
 
       if (!lat || !lng) {
@@ -87,6 +98,7 @@ export class GooglePlacesStreamController {
         gridsNeeded,
         keyword,
         name,
+        address,
       });
       await session.save(redis);
 
@@ -120,6 +132,9 @@ export class GooglePlacesStreamController {
         } else {
           // Create new hotel
           const hotelName = name || `Search Location - ${searchRadius}km`;
+          const hotelAddress =
+            address ||
+            `Search origin point (lat: ${lat.toFixed(4)}, lng: ${lng.toFixed(4)})`;
           const insertHotelQuery = `
             INSERT INTO hotels 
             (name, address, lat, lng, phone, email, website, status, 
@@ -131,7 +146,7 @@ export class GooglePlacesStreamController {
 
           const newHotelResult = await query(insertHotelQuery, [
             hotelName,
-            `Search origin point (lat: ${lat.toFixed(4)}, lng: ${lng.toFixed(4)})`,
+            hotelAddress,
             lat,
             lng,
             `search_${Date.now()}_${Math.floor(Math.random() * 10000)}`,

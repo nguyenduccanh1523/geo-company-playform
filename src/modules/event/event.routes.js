@@ -32,6 +32,47 @@ router.get("/nearby", EventController.getNearbyEvents);
  */
 router.post("/import", EventController.importEvents);
 
+// ============================================
+// EVENT INFERENCE ROUTES (Perplexity + OpenAI)
+// ============================================
+// These routes MUST come BEFORE /:id routes
+
+/**
+ * POST /api/events/infer-openai
+ * Infer events using OpenAI
+ */
+router.post("/infer-openai", (req, res) => {
+  const eventSearchAPI = req.app.locals.eventSearchAPI;
+
+  if (!eventSearchAPI) {
+    return res.status(503).json({
+      statusCode: 503,
+      message: "Event Search API not initialized",
+      error: "Check OPENAI_API_KEY and PERPLEXITY_API_KEY in .env",
+    });
+  }
+
+  return eventSearchAPI.handleInferOpenAI(req, res);
+});
+
+/**
+ * POST /api/events/infer-perplexity
+ * Infer events using Perplexity
+ */
+router.post("/infer-perplexity", (req, res) => {
+  const eventSearchAPI = req.app.locals.eventSearchAPI;
+
+  if (!eventSearchAPI) {
+    return res.status(503).json({
+      statusCode: 503,
+      message: "Event Search API not initialized",
+      error: "Check OPENAI_API_KEY and PERPLEXITY_API_KEY in .env",
+    });
+  }
+
+  return eventSearchAPI.handleInferPerplexity(req, res);
+});
+
 /**
  * GET /api/events/:id
  * Get event details

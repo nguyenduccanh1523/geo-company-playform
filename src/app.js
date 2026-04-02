@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -7,6 +6,7 @@ import {
   errorHandlerMiddleware,
   notFoundMiddleware,
 } from "./shared/middlewares/error-handler.middleware.js";
+import { EventSearchAPI } from "./api/eventSearchAPI.js";
 
 // Import routes
 import hotelRoutes from "./modules/hotel/hotel.routes.js";
@@ -22,6 +22,29 @@ dotenv.config();
 
 const logger = createLogger("App");
 const app = express();
+
+// ============================================
+// INITIALIZE EVENT SEARCH API (Perplexity + OpenAI)
+// ============================================
+let eventSearchAPI = null;
+
+try {
+  eventSearchAPI = new EventSearchAPI(
+    process.env.PERPLEXITY_API_KEY || null,
+    process.env.OPENAI_API_KEY || null,
+    process.env.EVENTBRITE_ACCESS_TOKEN || null,
+    process.env.PREDICTHQ_ACCESS_TOKEN || null,
+  );
+  if (process.env.OPENAI_API_KEY || process.env.PERPLEXITY_API_KEY) {
+    logger.info("✅ Event Search API (Perplexity + OpenAI) initialized");
+  }
+} catch (error) {
+  logger.warn("⚠️  Event Search API initialization failed:", error.message);
+  eventSearchAPI = null;
+}
+
+// Store in app context for use in routes
+app.locals.eventSearchAPI = eventSearchAPI;
 
 // ============================================
 // MIDDLEWARES

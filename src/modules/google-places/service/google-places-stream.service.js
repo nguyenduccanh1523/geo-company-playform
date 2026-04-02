@@ -26,6 +26,7 @@ export class SearchSession {
     this.totalFailed = 0;
     this.error = null;
     this.searchName = params.name; // Store the search location name
+    this.searchAddress = params.address; // Store the search location address
   }
 
   async save(redis) {
