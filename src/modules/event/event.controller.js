@@ -138,7 +138,10 @@ export class EventController {
     try {
       const { hotel_id } = req.params;
       const page = Math.max(1, parseInt(req.query.page) || 1);
-      const pageSize = Math.max(1, Math.min(parseInt(req.query.pageSize) || 20, 100));
+      const pageSize = Math.max(
+        1,
+        Math.min(parseInt(req.query.pageSize) || 20, 100),
+      );
 
       const result = await EventService.findEventsByHotel(hotel_id, {
         page,
