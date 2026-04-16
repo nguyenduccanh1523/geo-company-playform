@@ -2,10 +2,11 @@
  * GOOGLE PLACES STREAMING ROUTES (Clean Architecture)
  *
  * Endpoints:
- * - POST   /search-companies-stream      → Start background search with caching
- *          Parameters: lat, lng, radius_km, grid_radius_km, keyword, name, address, forceRefresh
- * - GET    /search-session/:sessionId     → Query companies saved from session
+ * - POST   /search-companies-stream      → Start background search + events crawl (dual sessions)
+ *          Returns: sessionId (companies) + eventsSessionId (events)
+ * - GET    /search-session/:sessionId     → Query companies from session
  * - GET    /search-session/:sessionId/status → Lightweight progress status
+ * - GET    /events-session/:eventsSessionId → Query events from session (NEW)
  * - GET    /companies-by-hotel/:hotel_id  → Query companies by hotel with filters
  */
 
@@ -16,7 +17,7 @@ const router = express.Router();
 
 /**
  * POST /search-companies-stream
- * Start a new search session with progressive results
+ * Start a new search session - returns dual sessions: companies + events
  *
  * Body Parameters:
  * - lat (required): Latitude
@@ -29,13 +30,12 @@ const router = express.Router();
  * - maxResults (optional): Max results per request (default: 100)
  * - forceRefresh (optional): Skip cache and search again (default: false)
  *
- * Example:
+ * Response:
  * {
- *   "lat": 16.0699,
- *   "lng": 108.2249,
- *   "radius_km": 50,
- *   "name": "Da Nang City",
- *   "address": "Da Nang, Vietnam"
+ *   "sessionId": "companies_session_id",
+ *   "eventsSessionId": "events_session_id",
+ *   "hotelId": "hotel_id",
+ *   "events_crawl_queued": true
  * }
  */
 router.post("/search-companies-stream", (req, res) =>
@@ -50,6 +50,11 @@ router.get("/search-session/:sessionId", (req, res) =>
 // GET /search-session/:sessionId/status
 router.get("/search-session/:sessionId/status", (req, res) =>
   GooglePlacesStreamController.getSearchStatus(req, res),
+);
+
+// GET /events-session/:eventsSessionId (NEW)
+router.get("/events-session/:eventsSessionId", (req, res) =>
+  GooglePlacesStreamController.getEventsSession(req, res),
 );
 
 // GET /companies-by-hotel/:hotel_id

@@ -27,6 +27,12 @@ router.get("/", EventController.listEvents);
 router.get("/nearby", EventController.getNearbyEvents);
 
 /**
+ * GET /api/events/by-hotel/:hotel_id
+ * Get events linked to a hotel - MUST BE BEFORE /:id ROUTE!
+ */
+router.get("/by-hotel/:hotel_id", EventController.getEventsByHotel);
+
+/**
  * POST /api/events/import
  * Import events
  */

@@ -5,6 +5,7 @@
 
 import {
   SearchSession,
+  EventSearchSession,
   GooglePlacesStreamService,
 } from "../service/google-places-stream.service.js";
 import GooglePlacesService from "../../../services/googlePlacesService.js";
@@ -18,6 +19,7 @@ import {
   sendPaginatedSuccess,
 } from "../../../shared/utils/response.js";
 import redis from "../../../config/redis.js";
+import { predictHqEventsQueue } from "../../../config/queue.js";
 import { randomBytes } from "crypto";
 
 const logger = createLogger("GooglePlacesStreamController");
@@ -102,6 +104,18 @@ export class GooglePlacesStreamController {
       });
       await session.save(redis);
 
+      // ✅ Create EventSearchSession for PredictHQ events (NEW)
+      const eventsSessionId = randomBytes(16).toString("hex");
+      const eventSession = new EventSearchSession(eventsSessionId, {
+        hotelId: null, // Will be set after hotel is created
+        location: {
+          lat,
+          lng,
+          radius_km: searchRadius,
+        },
+      });
+      await eventSession.save(redis);
+
       // ✅ Create hotel immediately
       let hotelId;
       let existingCompaniesCount = 0;
@@ -159,6 +173,11 @@ export class GooglePlacesStreamController {
         // Set hotelId in session immediately
         session.hotelId = hotelId;
         await session.save(redis);
+
+        // ✅ Update EventSearchSession with hotelId (NEW)
+        eventSession.params.hotelId = hotelId;
+        eventSession.hotelId = hotelId;
+        await eventSession.save(redis);
         logger.info(`🏨 Session linked to hotel: ${hotelId}`);
       } catch (error) {
         logger.error(`⚠️  Failed to create/find hotel: ${error.message}`);
@@ -200,20 +219,66 @@ export class GooglePlacesStreamController {
         session.endTime = Date.now();
         await session.save(redis);
 
+        // 🚀 QUEUE PREDICTHQ JOB EVEN ON CACHE HIT
+        if (process.env.PREDICTHQ_ACCESS_TOKEN) {
+          try {
+            const predictHqJob = await predictHqEventsQueue.add(
+              {
+                lat,
+                lng,
+                radius_km: searchRadius,
+                hotelId,
+                eventsSessionId,
+                location_name: name || `Search Location - ${searchRadius}km`,
+              },
+              {
+                attempts: 3,
+                backoff: {
+                  type: "exponential",
+                  delay: 2000,
+                },
+                removeOnComplete: false,
+                removeOnFail: false,
+              },
+            );
+
+            logger.info(`
+╔══════════════════════════════════════════════════════════════╗
+║    🚀 PREDICTHQ EVENTS CRAWL QUEUED (Cache Hit Path)        ║
+╚══════════════════════════════════════════════════════════════╝
+  📍 Location: ${lat}, ${lng}
+  🎯 Radius: ${searchRadius}km
+  🏨 Hotel ID: ${hotelId}
+  📊 Job ID: ${predictHqJob.id}
+  ⏳ Status: Waiting for worker...
+╔══════════════════════════════════════════════════════════════╝
+            `);
+          } catch (error) {
+            logger.error(`❌ Failed to queue PredictHQ job: ${error.message}`);
+          }
+        }
+
         return sendSuccess(
           res,
           {
             sessionId,
+            eventsSessionId,
             hotelId,
             source: "CACHE",
             companies_available: existingCompaniesCount,
             cached_data: true,
+            predicthq_job_queued: true,
+            events_crawl_queued: true,
             force_refresh_hint:
               'Use "forceRefresh": true in request body to search again',
-            retrieval_method:
-              "Use GET /api/search-session/:sessionId to fetch companies",
+            retrieval_method: {
+              companies:
+                "Use GET /api/search-session/:sessionId to fetch companies",
+              events:
+                "Use GET /api/events-session/:eventsSessionId to fetch events",
+            },
           },
-          `Data loaded from cache - ${existingCompaniesCount} companies found in previous search`,
+          `Data loaded from cache - ${existingCompaniesCount} companies found. PredictHQ events crawl queued in background.`,
           200,
         );
       }
@@ -233,16 +298,22 @@ export class GooglePlacesStreamController {
         res,
         {
           sessionId,
+          eventsSessionId,
           hotelId,
           source: "NEW_SEARCH",
           cache_status:
             existingCompaniesCount > 0
               ? `${existingCompaniesCount} companies already exist but forcing refresh`
               : "No cached data",
-          retrieval_method:
-            "Use GET /api/search-session/:sessionId to fetch companies",
+          events_crawl_queued: true,
+          retrieval_method: {
+            companies:
+              "Use GET /api/search-session/:sessionId to fetch companies",
+            events:
+              "Use GET /api/events-session/:eventsSessionId to fetch events",
+          },
         },
-        "Search started in background. Poll /api/search-session/:sessionId for progress.",
+        "Search started in background. Companies & PredictHQ events will be processed.",
         200,
       );
 
@@ -355,6 +426,51 @@ export class GooglePlacesStreamController {
   🆔 Session: ${sessionId}
 ╔══════════════════════════════════════════════════════════════╝
           `);
+
+          // ✅ TRIGGER PREDICTHQ EVENTS CRAWL IN BACKGROUND
+          if (process.env.PREDICTHQ_ACCESS_TOKEN) {
+            try {
+              const predictHqJob = await predictHqEventsQueue.add(
+                {
+                  lat,
+                  lng,
+                  radius_km: searchRadius,
+                  hotelId,
+                  eventsSessionId,
+                  location_name: name || `Search Location - ${searchRadius}km`,
+                },
+                {
+                  attempts: 3,
+                  backoff: {
+                    type: "exponential",
+                    delay: 2000,
+                  },
+                  removeOnComplete: false,
+                  removeOnFail: false,
+                },
+              );
+
+              logger.info(`
+╔══════════════════════════════════════════════════════════════╗
+║         🚀 PREDICTHQ EVENTS CRAWL QUEUED                     ║
+╚══════════════════════════════════════════════════════════════╝
+  📍 Location: ${lat}, ${lng}
+  🎯 Radius: ${searchRadius}km
+  🏨 Hotel ID: ${hotelId}
+  📊 Job ID: ${predictHqJob.id}
+  ⏳ Status: Waiting for worker...
+╔══════════════════════════════════════════════════════════════╝
+              `);
+            } catch (error) {
+              logger.error(
+                `❌ Failed to queue PredictHQ job: ${error.message}`,
+              );
+            }
+          } else {
+            logger.warn(
+              `⚠️  PREDICTHQ_ACCESS_TOKEN not set, skipping events crawl`,
+            );
+          }
         } catch (error) {
           logger.error("❌ Background search error:", error);
           session.fail(error.message);
@@ -491,6 +607,94 @@ export class GooglePlacesStreamController {
       );
     } catch (error) {
       logger.error(`❌ GET /status error: ${error.message}`);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      return sendError(res, error.message);
+    }
+  }
+
+  /**
+   * GET /events-session/:eventsSessionId
+   * Retrieve events from EventSearchSession (NEW)
+   */
+  static async getEventsSession(req, res) {
+    try {
+      const { eventsSessionId } = req.params;
+      const { limit = 20, page = 1 } = req.query;
+
+      logger.info(`
+╔════════════════════════════════════════════════════════════╗
+║  🔹 GET /events-session/:eventsSessionId REQUEST          ║
+╚════════════════════════════════════════════════════════════╝
+  📌 Events Session ID: ${eventsSessionId}
+  📊 Query Params:
+     ├─ page: ${page}
+     ├─ limit: ${limit}
+      `);
+
+      // Get event session from Redis
+      const eventSessionData = await redis.get(`events:${eventsSessionId}`);
+      if (!eventSessionData) {
+        logger.warn(`❌ Events session not found: ${eventsSessionId}`);
+        return sendNotFound(
+          res,
+          "Events session not found or expired (TTL: 1 hour)",
+        );
+      }
+
+      const eventSession = JSON.parse(eventSessionData);
+      logger.info(`✅ Events session found - Status: ${eventSession.status}`);
+
+      const limit_num = Math.min(Math.max(1, parseInt(limit) || 20), 500);
+      const page_num = Math.max(1, parseInt(page) || 1);
+      const offset_num = (page_num - 1) * limit_num;
+
+      const hotelId = eventSession.hotelId;
+
+      if (!hotelId) {
+        return sendValidationError(res, "Events session has no hotel_id");
+      }
+
+      // Query events for this hotel from hotel_events table
+      const eventsResult = await query(
+        `SELECT e.id, e.name, e.description, e.event_type, e.location, 
+                e.lat, e.lng, e.start_date, e.end_date, e.status, 
+                e.attendees_count, e.url, e.external_source, e.external_id,
+                he.distance_km, he.relationship_type, he.confidence_score, he.created_at as linked_at
+         FROM events e
+         INNER JOIN hotel_events he ON e.id = he.event_id
+         WHERE he.hotel_id = $1
+         ORDER BY e.start_date DESC
+         LIMIT $2 OFFSET $3`,
+        [hotelId, limit_num, offset_num],
+      );
+
+      const totalResult = await query(
+        `SELECT COUNT(*) as total FROM hotel_events WHERE hotel_id = $1`,
+        [hotelId],
+      );
+
+      const events = eventsResult.rows;
+      const total = parseInt(totalResult.rows[0].total);
+      const totalPages = Math.ceil(total / limit_num);
+
+      logger.info(
+        `✅ Found ${total} total events | Returning ${events.length} | Page: ${page_num}/${totalPages}`,
+      );
+
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      return sendPaginatedSuccess(
+        res,
+        events,
+        {
+          page: page_num,
+          pageSize: limit_num,
+          total,
+          totalPages,
+        },
+        "Events retrieved successfully",
+      );
+    } catch (error) {
+      logger.error(`❌ GET /events-session ERROR: ${error.message}`);
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       return sendError(res, error.message);
     }

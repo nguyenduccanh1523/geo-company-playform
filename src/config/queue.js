@@ -35,6 +35,21 @@ export const companyEnrichQueue = new Queue("company-enrich", {
   },
 });
 
+// Queue for PredictHQ events crawling
+export const predictHqEventsQueue = new Queue("predicthq-events-crawl", {
+  redis: {
+    host: process.env.REDIS_HOST || "localhost",
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+  settings: {
+    maxStalledCount: 2,
+    lockDuration: 60000, // 60 seconds - crawl mất lâu hơn
+    lockRenewTime: 30000,
+    maxRetriesPerRequest: null,
+  },
+});
+
 // Listen to queue events
 companyBatchQueue.on("ready", () => {
   logger.info("✅ Company batch queue ready");
@@ -48,4 +63,12 @@ companyBatchQueue.on("drained", () => {
   logger.debug("🎉 Queue drained - all jobs processed");
 });
 
-export default { companyBatchQueue, companyEnrichQueue };
+predictHqEventsQueue.on("ready", () => {
+  logger.info("✅ PredictHQ events queue ready");
+});
+
+predictHqEventsQueue.on("error", (error) => {
+  logger.error("❌ PredictHQ Queue error:", error);
+});
+
+export default { companyBatchQueue, companyEnrichQueue, predictHqEventsQueue };

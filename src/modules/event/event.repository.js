@@ -15,7 +15,7 @@ export class EventRepository {
   static async create(eventData) {
     try {
       const result = await query(
-        `INSERT INTO event 
+        `INSERT INTO events 
          (name, description, event_type, organizer, location, lat, lng, 
           start_date, end_date, url, eventbrite_event_id, external_source, 
           external_id, attendees_count, raw_data)
@@ -40,7 +40,7 @@ export class EventRepository {
         ],
       );
 
-      return Event.fromDatabase(result.rows[0]);
+      return result.rows[0];
     } catch (error) {
       logger.error("Error creating event", error);
       throw new DatabaseException("Failed to create event", error);
@@ -52,8 +52,8 @@ export class EventRepository {
    */
   static async findById(id) {
     try {
-      const result = await query("SELECT * FROM event WHERE id = $1", [id]);
-      return result.rows.length > 0 ? Event.fromDatabase(result.rows[0]) : null;
+      const result = await query("SELECT * FROM events WHERE id = $1", [id]);
+      return result.rows.length > 0 ? result.rows[0] : null;
     } catch (error) {
       logger.error("Error finding event by ID", error);
       throw new DatabaseException("Failed to find event", error);
@@ -62,7 +62,7 @@ export class EventRepository {
 
   static async findAll(filters = {}, pagination = { limit: 20, offset: 0 }) {
     try {
-      let sql = "SELECT * FROM event WHERE 1=1";
+      let sql = "SELECT * FROM events WHERE 1=1";
       const params = [];
       let paramCount = 1;
 
@@ -103,7 +103,7 @@ export class EventRepository {
       params.push(pagination.limit, pagination.offset);
 
       const result = await query(sql, params);
-      return result.rows.map((row) => Event.fromDatabase(row));
+      return result.rows;
     } catch (error) {
       logger.error("Error finding events", error);
       throw new DatabaseException("Failed to find events", error);
@@ -117,7 +117,7 @@ export class EventRepository {
          (6371 * acos(cos(radians($2)) * cos(radians(lat)) * 
          cos(radians(lng) - radians($3)) + 
          sin(radians($2)) * sin(radians(lat)))) AS distance_km
-         FROM event
+         FROM events
          WHERE status = 'active' AND start_date > CURRENT_TIMESTAMP AND (
            6371 * acos(cos(radians($2)) * cos(radians(lat)) * 
            cos(radians(lng) - radians($3)) + 
@@ -138,10 +138,10 @@ export class EventRepository {
   static async findByEventbriteId(eventbriteId) {
     try {
       const result = await query(
-        "SELECT * FROM event WHERE eventbrite_event_id = $1",
+        "SELECT * FROM events WHERE eventbrite_event_id = $1",
         [eventbriteId],
       );
-      return result.rows.length > 0 ? Event.fromDatabase(result.rows[0]) : null;
+      return result.rows.length > 0 ? result.rows[0] : null;
     } catch (error) {
       logger.error("Error finding event by Eventbrite ID", error);
       throw new DatabaseException("Failed to find event", error);
@@ -151,19 +151,71 @@ export class EventRepository {
   static async findByExternalId(externalId, externalSource) {
     try {
       const result = await query(
-        "SELECT * FROM event WHERE external_id = $1 AND external_source = $2",
+        "SELECT * FROM events WHERE external_id = $1 AND external_source = $2",
         [externalId, externalSource],
       );
-      return result.rows.length > 0 ? Event.fromDatabase(result.rows[0]) : null;
+      return result.rows.length > 0 ? result.rows[0] : null;
     } catch (error) {
       logger.error("Error finding event by external ID", error);
       throw new DatabaseException("Failed to find event", error);
     }
   }
 
+  /**
+   * Find events by hotel ID (via hotel_events relationship)
+   * With distance and other metadata from hotel_events table
+   */
+  static async findByHotel(hotelId, pagination = { limit: 20, offset: 0 }) {
+    try {
+      const result = await query(
+        `SELECT 
+           e.*,
+           he.distance_km,
+           he.relationship_type,
+           he.confidence_score,
+           he.created_at as linked_at
+         FROM events e
+         INNER JOIN hotel_events he ON e.id = he.event_id
+         WHERE he.hotel_id = $1
+         ORDER BY e.start_date DESC
+         LIMIT $2 OFFSET $3`,
+        [hotelId, pagination.limit, pagination.offset],
+      );
+
+      return result.rows.map((row) => ({
+        ...row,
+        distance_km: row.distance_km,
+        relationship_type: row.relationship_type,
+        confidence_score: row.confidence_score,
+        linked_at: row.linked_at,
+      }));
+    } catch (error) {
+      logger.error("Error finding events by hotel", error);
+      throw new DatabaseException("Failed to find events by hotel", error);
+    }
+  }
+
+  /**
+   * Count events linked to hotel
+   */
+  static async countByHotel(hotelId) {
+    try {
+      const result = await query(
+        `SELECT COUNT(*) FROM events e
+         INNER JOIN hotel_events he ON e.id = he.event_id
+         WHERE he.hotel_id = $1`,
+        [hotelId],
+      );
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      logger.error("Error counting events by hotel", error);
+      throw new DatabaseException("Failed to count events by hotel", error);
+    }
+  }
+
   static async count(filters = {}) {
     try {
-      let sql = "SELECT COUNT(*) FROM event WHERE 1=1";
+      let sql = "SELECT COUNT(*) FROM events WHERE 1=1";
       const params = [];
       let paramCount = 1;
 
@@ -197,11 +249,11 @@ export class EventRepository {
       updates.push(`updated_at = CURRENT_TIMESTAMP`);
 
       const result = await query(
-        `UPDATE event SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
+        `UPDATE events SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
         values,
       );
 
-      return result.rows.length > 0 ? Event.fromDatabase(result.rows[0]) : null;
+      return result.rows.length > 0 ? result.rows[0] : null;
     } catch (error) {
       logger.error("Error updating event", error);
       throw new DatabaseException("Failed to update event", error);
@@ -214,7 +266,7 @@ export class EventRepository {
   static async delete(id) {
     try {
       const result = await query(
-        "DELETE FROM event WHERE id = $1 RETURNING id",
+        "DELETE FROM events WHERE id = $1 RETURNING id",
         [id],
       );
       return result.rows.length > 0;
@@ -235,7 +287,7 @@ export class EventRepository {
       const results = [];
       for (const eventData of events) {
         const result = await client.query(
-          `INSERT INTO event 
+          `INSERT INTO events 
            (name, description, event_type, organizer, location, lat, lng, 
             start_date, end_date, url, eventbrite_event_id, external_source, 
             external_id, attendees_count, raw_data)
@@ -259,7 +311,7 @@ export class EventRepository {
             eventData.raw_data || null,
           ],
         );
-        results.push(Event.fromDatabase(result.rows[0]));
+        results.push(result.rows[0]);
       }
 
       await client.query("COMMIT");

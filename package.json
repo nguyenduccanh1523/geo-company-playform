@@ -11,6 +11,7 @@
     "watch": "node --watch src/server.js",
     "worker": "node src/workers/index.js",
     "worker:watch": "node --watch src/workers/index.js",
+    "worker:predicthq": "node src/workers/predicthq-events.worker.js",
     "dev:full": "concurrently \"npm run dev\" \"npm run worker:watch\"",
     "db:init": "node src/database/init.js",
     "db:seed": "node src/database/seed.js",

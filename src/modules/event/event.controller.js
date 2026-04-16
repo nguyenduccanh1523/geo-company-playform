@@ -4,6 +4,7 @@
 
 import { EventService } from "./event.service.js";
 import { EventResponseDto, EventDetailDto } from "./dto/event-response.dto.js";
+import { sendPaginatedSuccess } from "../../shared/utils/response.js";
 import { createLogger } from "../../shared/utils/logger.js";
 
 const logger = createLogger("EventController");
@@ -125,6 +126,34 @@ export class EventController {
           radiusKm: result.radiusKm,
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/events/by-hotel/:hotel_id?page=1&pageSize=20
+   */
+  static async getEventsByHotel(req, res, next) {
+    try {
+      const { hotel_id } = req.params;
+      const page = Math.max(1, parseInt(req.query.page) || 1);
+      const pageSize = Math.max(1, Math.min(parseInt(req.query.pageSize) || 20, 100));
+
+      const result = await EventService.findEventsByHotel(hotel_id, {
+        page,
+        pageSize,
+      });
+
+      const responses = result.events.map((e) => new EventResponseDto(e));
+
+      sendPaginatedSuccess(
+        res,
+        responses,
+        result.pagination,
+        "Events found",
+        200,
+      );
     } catch (error) {
       next(error);
     }

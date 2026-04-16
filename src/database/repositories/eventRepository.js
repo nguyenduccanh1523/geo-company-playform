@@ -96,7 +96,7 @@ export async function createEvent(eventData) {
  * Lấy sự kiện theo ID
  */
 export async function getEventById(id) {
-  const sql = `SELECT * FROM event WHERE id = $1`;
+  const sql = `SELECT * FROM events WHERE id = $1`;
   const result = await query(sql, [id]);
   return result.rows[0];
 }
@@ -176,7 +176,7 @@ export async function updateEvent(id, updateData) {
  * Xóa sự kiện
  */
 export async function deleteEvent(id) {
-  const sql = `DELETE FROM event WHERE id = $1`;
+  const sql = `DELETE FROM events WHERE id = $1`;
   await query(sql, [id]);
 }
 

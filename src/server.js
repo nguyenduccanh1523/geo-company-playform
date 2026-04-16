@@ -1,4 +1,3 @@
-
 import dotenv from "dotenv";
 import { pool } from "./config/database.js";
 import app from "./app.js";
@@ -25,7 +24,7 @@ async function startServer() {
     // ============================================
     // 2. Start Express Server
     // ============================================
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, async () => {
       logger.info(`✅ Server started on port ${PORT}`);
       logger.info(`📍 Environment: ${NODE_ENV}`);
       logger.info(`
@@ -61,6 +60,17 @@ async function startServer() {
 📚 Documentation:
   See docs/INTEGRATION_GUIDE.md for full API documentation
       `);
+
+      // ============================================
+      // Initialize Background Workers
+      // ============================================
+      try {
+        await import("./workers/index.js");
+        logger.info(`\n✅ Background Workers Initialized`);
+        logger.info(`📡 Listening for queue jobs...`);
+      } catch (error) {
+        logger.error(`❌ Failed to initialize workers:`, error.message);
+      }
     });
 
     // ============================================

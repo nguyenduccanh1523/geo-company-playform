@@ -58,7 +58,7 @@ export class CompanyEventRelationshipRepository {
     try {
       const result = await query(
         `SELECT e.*, ce.role
-         FROM event e
+         FROM events e
          JOIN company_event ce ON e.id = ce.event_id
          WHERE ce.company_id = $1 AND e.status = 'active'
          ORDER BY e.start_date DESC

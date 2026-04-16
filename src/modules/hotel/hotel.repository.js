@@ -308,7 +308,7 @@ export class HotelRepository {
     try {
       const result = await query(
         `SELECT e.*, he.distance_km, he.relationship_type
-         FROM event e
+         FROM events e
          JOIN hotel_event he ON e.id = he.event_id
          WHERE he.hotel_id = $1 AND e.status = 'active'
          ORDER BY e.start_date ASC

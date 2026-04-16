@@ -9,6 +9,7 @@ import { Hotel } from "../modules/hotel/entities/hotel.entity";
 // Crawl entities
 import { CrawlBatch } from "../modules/crawl-batch/entities/crawl-batch.entity";
 import { CrawlItem } from "./entities/crawl-item.entity";
+import { CrawlLocation } from "./entities/crawl-location.entity";
 // Source entities
 import { CompanySource } from "./entities/company-source.entity";
 import { EventSource } from "./entities/event-source.entity";
@@ -51,6 +52,7 @@ const AppDataSource = new DataSource({
     // Crawl
     CrawlBatch,
     CrawlItem,
+    CrawlLocation,
     // Source
     CompanySource,
     EventSource,

@@ -53,6 +53,48 @@ export class SearchSession {
 }
 
 // ============================================
+// EVENT SEARCH SESSION (For PredictHQ Events)
+// ============================================
+export class EventSearchSession {
+  constructor(sessionId, params) {
+    this.sessionId = sessionId;
+    this.params = params;
+    this.status = "RUNNING"; // RUNNING, COMPLETED, FAILED
+    this.startTime = Date.now();
+    this.endTime = null;
+    this.totalEvents = 0;
+    this.totalSaved = 0;
+    this.totalSkipped = 0;
+    this.totalFailed = 0;
+    this.error = null;
+    this.hotelId = params.hotelId;
+    this.location = params.location; // {lat, lng, radius_km}
+  }
+
+  async save(redis) {
+    // Save to Redis
+    const key = `events:${this.sessionId}`;
+    await redis.setex(key, 36000, JSON.stringify(this));
+  }
+
+  complete() {
+    this.status = "COMPLETED";
+    this.endTime = Date.now();
+  }
+
+  fail(error) {
+    this.status = "FAILED";
+    this.endTime = Date.now();
+    this.error = error;
+  }
+
+  getDuration() {
+    const end = this.endTime || Date.now();
+    return end - this.startTime;
+  }
+}
+
+// ============================================
 // HELPER FUNCTIONS
 // ============================================
 

@@ -113,6 +113,49 @@ export class EventService {
   }
 
   /**
+   * Find events by hotel ID
+   */
+  static async findEventsByHotel(
+    hotelId,
+    pagination = { page: 1, pageSize: 20 },
+  ) {
+    try {
+      if (!hotelId) {
+        throw new BusinessException("INVALID_HOTEL_ID", "Hotel ID is required");
+      }
+
+      logger.info(`Finding events for hotel: ${hotelId}`);
+
+      // Convert page/pageSize to offset/limit
+      const pageSize = Math.min(pagination.pageSize || 20, 100);
+      const page = Math.max(pagination.page || 1, 1);
+      const offset = (page - 1) * pageSize;
+
+      const events = await EventRepository.findByHotel(hotelId, {
+        limit: pageSize,
+        offset,
+      });
+      const total = await EventRepository.countByHotel(hotelId);
+
+      return {
+        hotel_id: hotelId,
+        events,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize),
+          hasNextPage: page < Math.ceil(total / pageSize),
+          hasPreviousPage: page > 1,
+        },
+      };
+    } catch (error) {
+      logger.error(`Error finding events by hotel: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * ✅ UPDATE
    */
   static async updateEvent(id, updateData) {

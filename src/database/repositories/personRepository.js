@@ -207,7 +207,7 @@ export async function getPersonCompanies(personId) {
 export async function getPersonEvents(personId) {
   const sql = `
     SELECT e.*, pe.role
-    FROM event e
+    FROM events e
     JOIN person_event pe ON e.id = pe.event_id
     WHERE pe.person_id = $1
     ORDER BY e.start_date DESC

@@ -246,7 +246,7 @@ export class EventbriteAPI {
 
       // Try to get from database first
       const dbEvent = await pool.query(
-        `SELECT * FROM event WHERE source_id = $1 LIMIT 1`,
+        `SELECT * FROM events WHERE source_id = $1 LIMIT 1`,
         [eventbriteId],
       );
 
@@ -280,7 +280,7 @@ export class EventbriteAPI {
       try {
         // Check if event already exists
         const existing = await pool.query(
-          `SELECT id FROM event WHERE source_id = $1 LIMIT 1`,
+          `SELECT id FROM events WHERE source_id = $1 LIMIT 1`,
           [event.id],
         );
 

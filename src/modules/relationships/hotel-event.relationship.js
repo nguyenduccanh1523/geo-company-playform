@@ -63,7 +63,7 @@ export class HotelEventRelationshipRepository {
     try {
       const result = await query(
         `SELECT e.*, he.relationship_type, he.distance_km
-         FROM event e
+         FROM events e
          JOIN hotel_event he ON e.id = he.event_id
          WHERE he.hotel_id = $1 AND e.status = 'active' AND e.start_date > CURRENT_TIMESTAMP
          ORDER BY e.start_date ASC
@@ -189,7 +189,7 @@ export class HotelEventRelationshipRepository {
   static async countEventsNearHotel(hotelId) {
     try {
       const result = await query(
-        "SELECT COUNT(*) FROM hotel_event WHERE hotel_id = $1 AND event_id IN (SELECT id FROM event WHERE status = 'active')",
+        "SELECT COUNT(*) FROM hotel_event WHERE hotel_id = $1 AND event_id IN (SELECT id FROM events WHERE status = 'active')",
         [hotelId],
       );
       return parseInt(result.rows[0].count, 10);
