@@ -1,9 +1,3 @@
-/**
- * API Response Standardization Utility
- *
- * All API endpoints should use these methods to return consistent responses
- */
-
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("ResponseHandler");

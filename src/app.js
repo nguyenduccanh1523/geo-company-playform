@@ -8,7 +8,6 @@ import {
 } from "./shared/middlewares/error-handler.middleware.js";
 import { EventSearchAPI } from "./api/eventSearchAPI.js";
 
-// Import routes
 import hotelRoutes from "./modules/hotel/hotel.routes.js";
 import companyRoutes from "./modules/company/company.routes.js";
 import personRoutes from "./modules/person/person.routes.js";

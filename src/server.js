@@ -9,21 +9,12 @@ const logger = createLogger("Server");
 const PORT = process.env.API_PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || "development";
 
-/**
- * Khởi động server
- */
 async function startServer() {
   try {
-    // ============================================
-    // 1. Kiểm tra Database Connection
-    // ============================================
     logger.info("🔍 Checking database connection...");
     const connectionTest = await pool.query("SELECT NOW()");
     logger.info(`✅ Database connected: ${connectionTest.rows[0].now}`);
 
-    // ============================================
-    // 2. Start Express Server
-    // ============================================
     const server = app.listen(PORT, async () => {
       logger.info(`✅ Server started on port ${PORT}`);
       logger.info(`📍 Environment: ${NODE_ENV}`);
@@ -123,9 +114,6 @@ async function startServer() {
   }
 }
 
-/**
- * Start the server
- */
 startServer();
 
 export { app };

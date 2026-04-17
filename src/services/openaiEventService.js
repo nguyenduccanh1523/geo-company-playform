@@ -7,8 +7,10 @@
  */
 
 import axios from "axios";
+import crypto from "crypto";
 import EventbriteService from "./eventbriteService.js";
 import PredictHqService from "./predictHqService.js";
+import { query } from "../config/database.js";
 
 class OpenAIEventService {
   constructor(openaiApiKey, eventbriteToken = null, predictHqToken = null) {
@@ -153,12 +155,140 @@ Return valid JSON array only - no markdown or explanation.`;
 
       const inferredEvents = JSON.parse(jsonString);
 
+      // ============================================
+      // 💾 DATABASE PERSISTENCE LOGIC
+      // ============================================
+      const { auto_save = true } = options;
+      const dbResult = {
+        total_events_saved: 0,
+        total_company_events_saved: 0,
+        skipped_no_data: 0,
+        errors: 0,
+        details: [],
+      };
+
+      if (auto_save) {
+        console.log(`\n💾 Auto-saving inferred events to database...`);
+
+        // Process each company's events
+        for (const companyData of inferredEvents) {
+          try {
+            const companyId = companies.find(
+              (c) => c.company_name === companyData.company_name,
+            )?.company_id;
+
+            if (!companyId) {
+              console.warn(
+                `⚠️  No company_id found for ${companyData.company_name}`,
+              );
+              dbResult.skipped_no_data++;
+              continue;
+            }
+
+            // Filter out "no information" events
+            const realEvents = (companyData.events || []).filter(
+              (e) => e.event_id !== "no-information",
+            );
+
+            if (realEvents.length === 0) {
+              console.log(
+                `⏭️  Skipping ${companyData.company_name} - No real events to save`,
+              );
+              dbResult.skipped_no_data++;
+              continue;
+            }
+
+            // Save events for this company
+            const savedResult = await this._saveEventsToDB(
+              companyId,
+              companyData.company_name,
+              realEvents,
+            );
+
+            dbResult.total_events_saved += savedResult.events_saved;
+            dbResult.total_company_events_saved +=
+              savedResult.company_events_saved;
+            dbResult.errors += savedResult.errors;
+
+            // Track new vs existing events
+            const newEventCount = savedResult.new_events.length;
+            const existingEventCount = savedResult.existing_events.length;
+
+            dbResult.details.push({
+              company_name: companyData.company_name,
+              company_id: companyId,
+              events_saved: savedResult.events_saved,
+              company_events_saved: savedResult.company_events_saved,
+              errors: savedResult.errors,
+              new_events_count: newEventCount,
+              existing_events_count: existingEventCount,
+              new_events: savedResult.new_events,
+              existing_events: savedResult.existing_events,
+            });
+          } catch (error) {
+            console.error(
+              `❌ Error saving events for ${companyData.company_name}:`,
+              error.message,
+            );
+            dbResult.errors++;
+          }
+        }
+
+        console.log(`✅ Database persistence completed:`, dbResult);
+      }
+
+      // ============================================
+      // ENRICH RESPONSE WITH COMPANY_ID AND DB INFO
+      // ============================================
+      const enrichedData = inferredEvents.map((company) => {
+        const foundCompany = companies.find(
+          (c) => c.company_name === company.company_name,
+        );
+
+        // Get new/existing event counts from dbResult
+        const companyDetail = dbResult.details.find(
+          (d) => d.company_id === foundCompany?.company_id,
+        );
+
+        return {
+          ...company,
+          company_id: foundCompany?.company_id || null,
+          total_saved_to_db:
+            company.events.filter((e) => e.event_id !== "no-information")
+              .length || 0,
+          new_events_found: companyDetail?.new_events_count || 0,
+          existing_events_in_db: companyDetail?.existing_events_count || 0,
+        };
+      });
+
+      // Calculate totals for database_result
+      const totalNewEvents = dbResult.details.reduce(
+        (sum, d) => sum + (d.new_events_count || 0),
+        0,
+      );
+      const totalExistingEvents = dbResult.details.reduce(
+        (sum, d) => sum + (d.existing_events_count || 0),
+        0,
+      );
+
       return {
         success: true,
         provider: "openai",
         mode: "verify",
         total_companies: companies.length,
-        inferred_data: inferredEvents,
+        inferred_data: enrichedData,
+        database_result: auto_save
+          ? {
+              ...dbResult,
+              new_events_added: totalNewEvents,
+              existing_events: totalExistingEvents,
+              total_events_in_db:
+                dbResult.total_company_events_saved +
+                totalExistingEvents -
+                totalNewEvents,
+            }
+          : null,
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       console.error("❌ OpenAI Event Inference Error:", error.message);
@@ -171,6 +301,7 @@ Return valid JSON array only - no markdown or explanation.`;
         provider: "openai",
         error: error.message,
         inferred_data: [],
+        database_result: null,
       };
     }
   }
@@ -683,6 +814,197 @@ Return as JSON. If information is not available, return null for those fields.`;
       console.error("Advanced search error:", error.message);
       throw error;
     }
+  }
+
+  /**
+   * ============================================
+   * 💾 DATABASE PERSISTENCE HELPER
+   * ============================================
+   * Save inferred events to database
+   * Detects new events vs existing events
+   * @param {string} companyId - UUID of company
+   * @param {string} companyName - Name of company
+   * @param {array} events - Array of inferred events
+   */
+  async _saveEventsToDB(companyId, companyName, events) {
+    const result = {
+      events_saved: 0,
+      company_events_saved: 0,
+      errors: 0,
+      new_events: [],
+      existing_events: [],
+      event_details: [],
+    };
+
+    try {
+      for (const eventData of events) {
+        try {
+          // 1. Check if event already exists (by date_verified + event_type)
+          // This prevents duplicates when OpenAI returns same event with different names
+          const eventDate =
+            eventData.date_verified && eventData.date_verified !== "N/A"
+              ? eventData.date_verified
+              : null;
+
+          const existingEventQuery = await query(
+            `SELECT id FROM events 
+             WHERE event_type = $1 AND start_date::date = $2::date
+             AND external_source = 'openai_inferred'
+             LIMIT 1`,
+            [eventData.event_type, eventDate],
+          );
+
+          let eventId;
+          let isNewEvent = false;
+
+          if (existingEventQuery.rows.length > 0) {
+            // Event exists, use existing ID (same date + type = same event)
+            eventId = existingEventQuery.rows[0].id;
+            console.log(
+              `   ℹ️  Event "${eventData.event_name}" already exists on ${eventDate} (reusing)`,
+            );
+          } else {
+            // Create new event
+            // Parse date - use date_verified if it's a valid date, otherwise use today
+            let eventStartDate = new Date();
+            if (
+              eventData.date_verified &&
+              eventData.date_verified !== "N/A" &&
+              /^\d{4}-\d{2}-\d{2}$/.test(eventData.date_verified)
+            ) {
+              eventStartDate = new Date(eventData.date_verified);
+            }
+
+            const createEventQuery = await query(
+              `INSERT INTO events (
+                name, 
+                event_type, 
+                description, 
+                location, 
+                lat, 
+                lng,
+                start_date, 
+                organizer, 
+                url, 
+                external_source, 
+                status,
+                raw_data
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+              RETURNING id`,
+              [
+                eventData.event_name,
+                eventData.event_type,
+                eventData.description || null,
+                eventData.location || "Unknown",
+                0, // lat - using 0 as placeholder
+                0, // lng - using 0 as placeholder
+                eventStartDate,
+                eventData.source || "AI Inferred",
+                eventData.source_url && eventData.source_url !== "N/A"
+                  ? eventData.source_url
+                  : null,
+                "openai_inferred",
+                "active",
+                JSON.stringify(eventData), // Store full event data in raw_data
+              ],
+            );
+
+            eventId = createEventQuery.rows[0].id;
+            isNewEvent = true;
+            result.events_saved++;
+            console.log(`   ✅ Created new event: "${eventData.event_name}"`);
+          }
+
+          // 2. Check if company-event relationship already exists
+          const existingCompanyEventQuery = await query(
+            `SELECT id, last_seen_at FROM company_events 
+             WHERE company_id = $1 AND event_id = $2
+             LIMIT 1`,
+            [companyId, eventId],
+          );
+
+          if (existingCompanyEventQuery.rows.length === 0) {
+            // Create NEW company-event relationship
+            const now = new Date();
+            await query(
+              `INSERT INTO company_events (
+                company_id, 
+                event_id, 
+                status, 
+                source_name, 
+                source_url, 
+                confidence_score,
+                first_seen_at,
+                last_seen_at
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [
+                companyId,
+                eventId,
+                "inferred", // inferred status
+                eventData.source || "AI Inferred",
+                eventData.source_url && eventData.source_url !== "N/A"
+                  ? eventData.source_url
+                  : null,
+                eventData.confidence_score || 0.5,
+                now,
+                now,
+              ],
+            );
+
+            result.company_events_saved++;
+            result.new_events.push({
+              event_id: eventData.event_id,
+              event_name: eventData.event_name,
+              status: "newly_added",
+            });
+            console.log(
+              `   🔗 Created NEW company-event relationship (confidence: ${eventData.confidence_score || 0.5})`,
+            );
+          } else {
+            // Relationship already exists - UPDATE last_seen_at
+            const existingCompanyEventId = existingCompanyEventQuery.rows[0].id;
+            const now = new Date();
+
+            await query(
+              `UPDATE company_events 
+               SET last_seen_at = $1
+               WHERE id = $2`,
+              [now, existingCompanyEventId],
+            );
+
+            result.existing_events.push({
+              event_id: eventData.event_id,
+              event_name: eventData.event_name,
+              status: "existing",
+              last_seen_at: existingCompanyEventQuery.rows[0].last_seen_at,
+            });
+            console.log(
+              `   ⏭️  Company-event relationship already exists (updated last_seen_at)`,
+            );
+          }
+
+          result.event_details.push({
+            event_name: eventData.event_name,
+            event_id: eventData.event_id,
+            is_new: isNewEvent,
+            has_new_relationship: existingCompanyEventQuery.rows.length === 0,
+          });
+        } catch (eventError) {
+          console.error(
+            `   ❌ Error saving event "${eventData.event_name}":`,
+            eventError.message,
+          );
+          result.errors++;
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error in _saveEventsToDB:`, error.message);
+      result.errors++;
+    }
+
+    return result;
   }
 }
 

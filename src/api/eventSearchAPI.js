@@ -26,10 +26,13 @@ export class EventSearchAPI {
    * Infer events using OpenAI
    * POST /api/events/infer-openai
    *
+   * ⭐ UPDATED: Now accepts company_id and saves to database
+   *
    * Body:
    * {
    *   "companies": [
    *     {
+   *       "company_id": "uuid-of-company",  // ← NEW: Company ID for DB persistence
    *       "company_name": "Google Vietnam",
    *       "website": "google.com.vn",
    *       "industry": "Technology",
@@ -37,7 +40,31 @@ export class EventSearchAPI {
    *       "distance_from_center": 0
    *     },
    *     ...
-   *   ]
+   *   ],
+   *   "auto_save": true  // ← NEW: Auto-save to database if true
+   * }
+   *
+   * Response:
+   * {
+   *   "success": true,
+   *   "provider": "openai",
+   *   "mode": "verify",
+   *   "total_companies": 1,
+   *   "inferred_data": [
+   *     {
+   *       "company_name": "Flushing Bank",
+   *       "company_id": "uuid",
+   *       "total_verified_events": 2,
+   *       "total_saved_to_db": 2,  // ← NEW: How many actually saved
+   *       "events": [...]
+   *     }
+   *   ],
+   *   "database_result": {
+   *     "total_events_saved": 2,
+   *     "total_company_events_saved": 2,
+   *     "skipped_no_data": 0,
+   *     "errors": 0
+   *   }
    * }
    */
   async handleInferOpenAI(req, res) {
@@ -49,16 +76,48 @@ export class EventSearchAPI {
         });
       }
 
-      const { companies } = req.body;
+      const { companies, auto_save = true } = req.body;
 
       if (!companies || !Array.isArray(companies) || companies.length === 0) {
         return res.status(400).json({
           success: false,
           error: "companies array là bắt buộc và phải không rỗng",
+          example: {
+            companies: [
+              {
+                company_id: "uuid-of-company",
+                company_name: "Google Vietnam",
+                website: "google.com.vn",
+                industry: "Technology",
+                address: "Ho Chi Minh City, Vietnam",
+                distance_from_center: 0,
+              },
+            ],
+            auto_save: true,
+          },
         });
       }
 
-      const result = await this.openai.inferCompanyEvents(companies);
+      // Validate company_id exists in all companies
+      const companiesWithoutId = companies.filter((c) => !c.company_id);
+      if (companiesWithoutId.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `company_id is required for all companies. Found ${companiesWithoutId.length} companies without company_id`,
+          example: {
+            company_id: "550e8400-e29b-41d4-a716-446655440000",
+            company_name: "Example Company",
+          },
+        });
+      }
+
+      console.log(
+        `🔍 Processing ${companies.length} companies with company_id (auto_save=${auto_save})`,
+      );
+
+      const result = await this.openai.inferCompanyEvents(companies, {
+        auto_save: auto_save,
+      });
 
       return res.json(result);
     } catch (error) {

@@ -244,13 +244,13 @@ export class GooglePlacesStreamController {
 
             logger.info(`
 ╔══════════════════════════════════════════════════════════════╗
-║    🚀 PREDICTHQ EVENTS CRAWL QUEUED (Cache Hit Path)        ║
+║    🚀 PREDICTHQ QUEUED (Runs parallel with GooglePlaces)    ║
 ╚══════════════════════════════════════════════════════════════╝
   📍 Location: ${lat}, ${lng}
   🎯 Radius: ${searchRadius}km
   🏨 Hotel ID: ${hotelId}
   📊 Job ID: ${predictHqJob.id}
-  ⏳ Status: Waiting for worker...
+  ⏳ Status: Starting...
 ╔══════════════════════════════════════════════════════════════╝
             `);
           } catch (error) {
@@ -399,7 +399,49 @@ export class GooglePlacesStreamController {
             );
           };
 
-          // Step 1: Search with callback
+          // ✅ QUEUE PREDICTHQ FIRST (don't wait - runs in parallel!)
+          let predictHqJob = null;
+          if (process.env.PREDICTHQ_ACCESS_TOKEN) {
+            try {
+              predictHqJob = await predictHqEventsQueue.add(
+                {
+                  lat,
+                  lng,
+                  radius_km: searchRadius,
+                  hotelId,
+                  eventsSessionId,
+                  location_name: name || `Search Location - ${searchRadius}km`,
+                },
+                {
+                  attempts: 3,
+                  backoff: {
+                    type: "exponential",
+                    delay: 2000,
+                  },
+                  removeOnComplete: false,
+                  removeOnFail: false,
+                },
+              );
+
+              logger.info(`
+╔══════════════════════════════════════════════════════════════╗
+║    🚀 PREDICTHQ QUEUED (Runs parallel with GooglePlaces)    ║
+╚══════════════════════════════════════════════════════════════╝
+  📍 Location: ${lat}, ${lng}
+  🎯 Radius: ${searchRadius}km
+  🏨 Hotel ID: ${hotelId}
+  📊 Job ID: ${predictHqJob.id}
+  ⏳ Status: Starting...
+╔══════════════════════════════════════════════════════════════╝
+              `);
+            } catch (error) {
+              logger.error(
+                `❌ Failed to queue PredictHQ job: ${error.message}`,
+              );
+            }
+          }
+
+          // Step 1: Search with callback (NOW runs in parallel with PredictHQ!)
           logger.info(`🔎 Searching Google Places with real-time streaming...`);
           await googlePlaces.searchNearbyBusinessesWithCallback(
             keyword || "company",
@@ -424,53 +466,9 @@ export class GooglePlacesStreamController {
   🔄 Processed Grids: ${gridPointsProcessed}
   ⏱️  Duration: ${(session.getDuration() / 1000).toFixed(1)}s
   🆔 Session: ${sessionId}
+  📊 PredictHQ Job: ${predictHqJob?.id || "N/A"} (running in parallel)
 ╔══════════════════════════════════════════════════════════════╝
           `);
-
-          // ✅ TRIGGER PREDICTHQ EVENTS CRAWL IN BACKGROUND
-          if (process.env.PREDICTHQ_ACCESS_TOKEN) {
-            try {
-              const predictHqJob = await predictHqEventsQueue.add(
-                {
-                  lat,
-                  lng,
-                  radius_km: searchRadius,
-                  hotelId,
-                  eventsSessionId,
-                  location_name: name || `Search Location - ${searchRadius}km`,
-                },
-                {
-                  attempts: 3,
-                  backoff: {
-                    type: "exponential",
-                    delay: 2000,
-                  },
-                  removeOnComplete: false,
-                  removeOnFail: false,
-                },
-              );
-
-              logger.info(`
-╔══════════════════════════════════════════════════════════════╗
-║         🚀 PREDICTHQ EVENTS CRAWL QUEUED                     ║
-╚══════════════════════════════════════════════════════════════╝
-  📍 Location: ${lat}, ${lng}
-  🎯 Radius: ${searchRadius}km
-  🏨 Hotel ID: ${hotelId}
-  📊 Job ID: ${predictHqJob.id}
-  ⏳ Status: Waiting for worker...
-╔══════════════════════════════════════════════════════════════╝
-              `);
-            } catch (error) {
-              logger.error(
-                `❌ Failed to queue PredictHQ job: ${error.message}`,
-              );
-            }
-          } else {
-            logger.warn(
-              `⚠️  PREDICTHQ_ACCESS_TOKEN not set, skipping events crawl`,
-            );
-          }
         } catch (error) {
           logger.error("❌ Background search error:", error);
           session.fail(error.message);

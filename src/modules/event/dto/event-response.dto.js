@@ -19,6 +19,7 @@ export class EventResponseDto {
     this.url = entity.url;
     this.attendees_count = entity.attendees_count;
     this.status = entity.status;
+    this.raw_data = entity.raw_data || null;
     this.created_at = entity.created_at;
     this.updated_at = entity.updated_at;
   }
@@ -33,6 +34,7 @@ export class EventResponseDto {
       start_date: this.start_date,
       end_date: this.end_date,
       url: this.url,
+      raw_data: this.raw_data,
     };
   }
 
