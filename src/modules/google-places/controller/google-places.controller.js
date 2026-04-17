@@ -236,6 +236,7 @@ export class GooglePlacesController {
         limit = 20,
         page = 1,
         maxDistance = null,
+        industry = null,
       } = req.query;
 
       const pageLimit = Math.min(Math.max(1, parseInt(limit) || 20), 500);
@@ -245,6 +246,7 @@ export class GooglePlacesController {
       const filters = {};
       if (keyword) filters.keyword = keyword;
       if (maxDistance) filters.maxDistance = parseFloat(maxDistance);
+      if (industry) filters.industry = industry;
 
       const result = await GooglePlacesRepository.getCompaniesByHotel(
         hotel_id,

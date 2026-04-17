@@ -159,6 +159,12 @@ export class GooglePlacesRepository {
         paramIndex++;
       }
 
+      if (filters.industry) {
+        whereClause += ` AND c.industry = $${paramIndex}`;
+        params.push(filters.industry);
+        paramIndex++;
+      }
+
       // Count total
       const countResult = await query(
         `SELECT COUNT(*) as total FROM companies c

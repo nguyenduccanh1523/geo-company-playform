@@ -712,6 +712,7 @@ export class GooglePlacesStreamController {
         limit = 20,
         page = 1,
         maxDistance = null,
+        industry = null,
       } = req.query;
 
       // Validate parameters
@@ -727,6 +728,7 @@ export class GooglePlacesStreamController {
 ├─ Filters:
 │  ├─ maxDistance: ${maxDistance || "none"}
 │  ├─ keyword: ${keyword || "none"}
+│  ├─ industry: ${industry || "none"}
 │  ├─ sort: ${sort}
 │  ├─ order: ${order}
 ├─ Pagination:
@@ -742,6 +744,12 @@ export class GooglePlacesStreamController {
       if (maxDistanceVal !== null && maxDistanceVal > 0) {
         whereClause += ` AND hc.distance_km <= $${paramIndex}`;
         params.push(maxDistanceVal);
+        paramIndex++;
+      }
+
+      if (industry && industry.trim()) {
+        whereClause += ` AND c.industry = $${paramIndex}`;
+        params.push(industry);
         paramIndex++;
       }
 
