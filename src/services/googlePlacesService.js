@@ -7,10 +7,10 @@ import axios from "axios";
 
 class GooglePlacesService {
   // ===== SMART KEYWORDS - Tùy vào radius size =====
-  static LITE_KEYWORDS = ["company", "office", "business"];
+  static LITE_KEYWORDS = ["companies", "office", "business"];
 
   static EXTENDED_KEYWORDS = [
-    "company",
+    "companies",
     "office",
     "business",
     "corporation",
@@ -25,7 +25,7 @@ class GooglePlacesService {
   ];
 
   static FULL_KEYWORDS = [
-    "company",
+    "companies",
     "office",
     "business",
     "corporation",
