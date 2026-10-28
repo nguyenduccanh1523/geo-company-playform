@@ -10,19 +10,14 @@ export class ApifyService {
   async getCompanyEmployees1(companyUrl, maxItems = 50) {
     try {
       const input = {
-        urls: [companyUrl], // 🔥 FIX CHÍNH
-        maxItems,
-        proxyConfiguration: {
-          useApifyProxy: true,
-          apifyProxyGroups: ["RESIDENTIAL"],
-          apifyProxyCountry: "US",
-        },
+        companies: [companyUrl],
+        maxResultsPerCompany: maxItems,
       };
 
       console.log("[ApifyService] Input:", input);
 
       const run = await this.client
-        .actor("scrapio/linkedin-company-employees")
+        .actor("johnvc/linkedin-company-employees-api")
         .call(input);
 
       console.log("[ApifyService] Run:", run);
